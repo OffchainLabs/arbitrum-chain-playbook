@@ -1,0 +1,189 @@
+# Arbitrum Chain Playbook
+
+An interactive CLI tool for deploying and operating Arbitrum Orbit chains, managing Nitro nodes via Docker, and running scenario playbooks.
+
+If you want to know the structure of this project and how to add playbooks, please refer to [readme-dev](./readme-dev.md).
+
+## Table of Contents
+
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Operation Modes](#operation-modes)
+  - [Chain Mode](#chain-mode)
+  - [Devnode Mode](#devnode-mode)
+  - [Remote RPC Mode](#remote-rpc-mode)
+- [Main Menu Options](#main-menu-options)
+- [Playbooks](#playbooks)
+- [Environment Variables](#environment-variables)
+- [For Developers](#for-developers)
+
+## Features
+
+- **Chain Deployment**: Deploy a new Arbitrum Orbit chain with automated configuration
+- **Node Management**: Start, stop, and monitor Nitro nodes via Docker containers
+- **Chain Management**: Configure chain parameters (TPS optimization, gas settings, etc.)
+- **State Reconstruction**: Restore chain state from deployment transaction hash
+- **Playbooks**: Run modular playbooks for testing and demonstrations
+- **Multiple Modes**: Support for local devnode, custom chain, and remote RPC connections
+
+## Prerequisites
+
+- **Node.js** v23 or higher
+- **Docker** (for running Nitro nodes)
+- **Yarn** or **npm**
+
+## Installation
+
+```bash
+# Clone the repository with submodules
+git clone --recurse-submodules https://github.com/OffchainLabs/arbitrum-chain-playbook.git
+cd arbitrum-chain-playbook
+
+# If already cloned without submodules:
+git submodule update --init --recursive
+
+# Install dependencies
+yarn install
+# or
+npm install
+```
+
+## Quick Start
+
+```bash
+# Start the CLI
+yarn start
+# or
+npm start
+
+# Development mode (auto-reload)
+yarn dev
+# or
+npm run dev
+```
+
+On startup, you'll be prompted to select an operation mode.
+
+## Operation Modes
+
+The CLI supports three operation modes, each suited for different use cases.
+
+### Chain Mode
+
+Deploy and manage your own Arbitrum Orbit chain.
+
+**Use case**: Full chain deployment and node management on a parent chain (e.g., Arbitrum Sepolia).
+
+(Chain mode can deploy a new chain but can also manage an existing chain as if you provide `CHAIN_DEPLOYMENT_TRANSACTION_HASH`)
+
+**Required environment variables**:
+```bash
+PARENT_CHAIN_RPC=https://sepolia-rollup.arbitrum.io/rpc
+MAIN_PRIVATE_KEY=0x...  # Account with funds on parent chain
+```
+
+**Optional**:
+```bash
+CHAIN_DEPLOYMENT_TRANSACTION_HASH=0x...  # Restore existing chain state
+```
+
+**What you can do**:
+- Deploy a new chain
+- Start/stop Nitro nodes
+- Configure chain parameters
+- Run playbooks
+
+### Devnode Mode
+
+Run a local Nitro devnode for quick testing without deploying a chain.
+
+**Use case**: Local development and testing.
+
+**No configuration required** - just select "Start Devnode Mode" from the menu.
+
+**Default settings**:
+| Setting | Value |
+|---------|-------|
+| Container | `nitro-dev` |
+| RPC URL | `http://127.0.0.1:8547` |
+| WS URL | `ws://127.0.0.1:8548` |
+| Chain ID | `412346` |
+| Dev Account | Pre-funded, auto-loaded |
+
+**What you can do**:
+- Manage devnode container
+- View status
+- Run playbooks
+
+### Remote RPC Mode
+
+Connect to an already-deployed remote chain.
+
+**Use case**: Interact with an existing chain without running local nodes.
+
+**Required environment variables**:
+```bash
+PARENT_CHAIN_RPC=https://sepolia-rollup.arbitrum.io/rpc
+CHAIN_RPC=https://your-orbit-chain-rpc.com
+CHAIN_DEPLOYMENT_TRANSACTION_HASH=0x...
+MAIN_PRIVATE_KEY=0x...  # Optional, for signing transactions
+```
+
+**What you can do**:
+- Interact with the chain
+- View status
+- Run playbooks
+
+## Main Menu Options
+
+| Option | Description | Available In |
+|--------|-------------|--------------|
+| **Deploy New Chain** | Deploy an Orbit chain to parent chain | Chain Mode |
+| **Manage Nodes** | Start/stop/monitor main Nitro nodes | Chain, Devnode |
+| **Manage the Chain** | Configure chain parameters (TPS, gas) | Chain Mode |
+| **Interact with Chain** | Send transactions, query state | All Modes |
+| **View Status** | Display chain and node information | All Modes |
+| **Node Config Operations** | Modify node configuration files | Chain Mode |
+| **Playbook List** | Run available playbooks | All Modes |
+
+**Note**: The **Manage Nodes** menu is for starting standard main nodes (with sequencer, batch poster, and staker components). Specialized validators (malicious, honest challenge validators) are started through their respective playbooks to ensure proper configuration and clean state requirements.
+
+## Playbooks
+
+The CLI includes modular playbooks for testing and demonstrations. Access playbooks from the main menu by selecting **Playbook List**.
+
+### Available Playbooks
+
+- **TPS Battle Test**: Comprehensive stress testing tool for measuring maximum TPS of Arbitrum Nitro nodes. Supports multiple test modes, transaction types, and detailed analytics.
+  - 📖 [Detailed Documentation](./src/playbooks/tps-test/README.md)
+
+- **Malicious Validator**: Simulate and test malicious validator behaviors for educational and security testing purposes. Includes a Malicious Mint Demo and a BoLD Challenge Demo.
+  - 📖 [Detailed Documentation](./src/playbooks/malicious-validator/README.md)
+
+For more information about each playbook, including configuration options, usage examples, and troubleshooting, please refer to their respective README files linked above.
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `PARENT_CHAIN_RPC` | Chain/Remote | RPC endpoint for the parent chain |
+| `MAIN_PRIVATE_KEY` | Recommended | Private key for signing transactions |
+| `CHAIN_DEPLOYMENT_TRANSACTION_HASH` | Remote | Transaction hash of chain deployment |
+| `CHAIN_RPC` | Remote | RPC endpoint for the Orbit chain |
+
+**Example `.env` file**:
+```bash
+# For Chain Mode
+PARENT_CHAIN_RPC=https://sepolia-rollup.arbitrum.io/rpc
+MAIN_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+
+# For Remote RPC Mode (add these)
+CHAIN_RPC=https://your-orbit-chain.com/rpc
+CHAIN_DEPLOYMENT_TRANSACTION_HASH=0x1234...
+```
+
+## For Developers
+
+For architecture details, API documentation, and how to add new playbooks, see [README-DEV.md](./README-DEV.md).

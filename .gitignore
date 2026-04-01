@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+claude.md
+
+# Environment variables
+.env
+
+# Build output
+dist/
+build/
+
+# Generated config files
+node-config*.json
+/config/
+*.log
+logs/
+data/
+
+# Docker node data
+.arbitrum/

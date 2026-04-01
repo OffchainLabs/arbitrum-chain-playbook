@@ -1,0 +1,30 @@
+name: Check format
+run-name: Checking format
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  check-formatting:
+    name: 'Check Formatting'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout files
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Check formatting with Prettier
+        run: yarn format:check
+
+

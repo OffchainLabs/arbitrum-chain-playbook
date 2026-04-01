@@ -1,0 +1,3 @@
+[submodule "nitro-devnode"]
+	path = nitro-devnode
+	url = https://github.com/OffchainLabs/nitro-devnode.git
