@@ -85,7 +85,7 @@ export interface NodeManagerLike {
 export enum MenuAction {
   DEPLOY_CHAIN = 'deploy_chain',
   MANAGE_NODES = 'manage_nodes',
-  MANAGE_CHAIN = 'manage_chain',
+
   INTERACT_CHAIN = 'interact_chain',
   VIEW_STATUS = 'view_status',
   NODECONFIG_OPERATIONS = 'nodeconfig_operations',

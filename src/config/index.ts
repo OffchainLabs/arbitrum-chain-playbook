@@ -18,7 +18,6 @@ import {
   CONFIRM_PERIOD_BLOCKS,
   MINIMUM_ASSERTION_PERIOD,
   L2_DEPOSIT_AMOUNT_ETH,
-  MINIMUM_L2_BASE_FEE_LOWER_BOUND_GWEI,
   APP_NAME,
   DEFAULT_CHAIN_NAME,
 } from '../types/constants.js';
@@ -61,7 +60,6 @@ export interface DeploymentConfig {
   confirmPeriodBlocks: bigint;
   minimumAssertionPeriod: bigint;
   l2DepositAmountEth: string;
-  minimumL2BaseFeeGwei: string;
   defaultChainName: string;
 }
 
@@ -128,7 +126,6 @@ export class ConfigService {
       confirmPeriodBlocks: CONFIRM_PERIOD_BLOCKS,
       minimumAssertionPeriod: MINIMUM_ASSERTION_PERIOD,
       l2DepositAmountEth: L2_DEPOSIT_AMOUNT_ETH,
-      minimumL2BaseFeeGwei: MINIMUM_L2_BASE_FEE_LOWER_BOUND_GWEI,
       defaultChainName: DEFAULT_CHAIN_NAME,
     };
   }
