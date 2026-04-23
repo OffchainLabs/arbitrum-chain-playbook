@@ -1,7 +1,6 @@
 import inquirer from 'inquirer';
 import { Playbook } from './types.js';
 import { maliciousValidatorPlaybook } from './malicious-validator/index.js';
-import { tpsTestPlaybook } from './tps-test/index.js';
 import logger from '../utils/logger.js';
 import { breadcrumb } from '../utils/breadcrumb.js';
 import { ChainEnv } from '../state/chainEnv/index.js';
@@ -16,7 +15,6 @@ class PlaybookRegistry {
   constructor() {
     // Register all available playbooks
     this.register(maliciousValidatorPlaybook);
-    this.register(tpsTestPlaybook);
   }
 
   /**

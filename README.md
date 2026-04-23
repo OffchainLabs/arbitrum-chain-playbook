@@ -23,7 +23,7 @@ If you want to know the structure of this project and how to add playbooks, plea
 
 - **Chain Deployment**: Deploy a new Arbitrum Orbit chain with automated configuration
 - **Node Management**: Start, stop, and monitor Nitro nodes via Docker containers
-- **Chain Management**: Configure chain parameters (TPS optimization, gas settings, etc.)
+
 - **State Reconstruction**: Restore chain state from deployment transaction hash
 - **Playbooks**: Run modular playbooks for testing and demonstrations
 - **Multiple Modes**: Support for local devnode, custom chain, and remote RPC connections
@@ -142,7 +142,7 @@ MAIN_PRIVATE_KEY=0x...  # Optional, for signing transactions
 |--------|-------------|--------------|
 | **Deploy New Chain** | Deploy an Orbit chain to parent chain | Chain Mode |
 | **Manage Nodes** | Start/stop/monitor main Nitro nodes | Chain, Devnode |
-| **Manage the Chain** | Configure chain parameters (TPS, gas) | Chain Mode |
+
 | **Interact with Chain** | Send transactions, query state | All Modes |
 | **View Status** | Display chain and node information | All Modes |
 | **Node Config Operations** | Modify node configuration files | Chain Mode |
@@ -155,9 +155,6 @@ MAIN_PRIVATE_KEY=0x...  # Optional, for signing transactions
 The CLI includes modular playbooks for testing and demonstrations. Access playbooks from the main menu by selecting **Playbook List**.
 
 ### Available Playbooks
-
-- **TPS Battle Test**: Comprehensive stress testing tool for measuring maximum TPS of Arbitrum Nitro nodes. Supports multiple test modes, transaction types, and detailed analytics.
-  - 📖 [Detailed Documentation](./src/playbooks/tps-test/README.md)
 
 - **Malicious Validator**: Simulate and test malicious validator behaviors for educational and security testing purposes. Includes a Malicious Mint Demo and a BoLD Challenge Demo.
   - 📖 [Detailed Documentation](./src/playbooks/malicious-validator/README.md)

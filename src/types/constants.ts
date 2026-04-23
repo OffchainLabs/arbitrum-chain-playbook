@@ -3,17 +3,6 @@
  */
 
 // =============================================================================
-// Chain Management Configuration
-// =============================================================================
-
-/**
- * Lower bound for minimum L2 base fee (in gwei).
- * Used by the "Manage the Chain" menu action.
- * If lower than this value, the gas calculation might overflow.
- */
-export const MINIMUM_L2_BASE_FEE_LOWER_BOUND_GWEI = '0.0001';
-
-// =============================================================================
 // Docker Configuration
 // =============================================================================
 

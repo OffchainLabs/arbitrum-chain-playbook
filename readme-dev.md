@@ -28,7 +28,7 @@ The application follows a layered architecture with clear separation of concerns
 │  mainMenu.ts, nodeController.ts, playbooks                  │
 ├─────────────────────────────────────────────────────────────┤
 │                    Business Logic Layer                     │
-│  NodeManager, ManageChainOperations, deployChain            │
+│  NodeManager, deployChain                                   │
 ├─────────────────────────────────────────────────────────────┤
 │                      State Layer                            │
 │  ChainEnv (singleton), SendersEnv (singleton)               │
@@ -71,8 +71,6 @@ src/
 │   │   ├── nodeManager.ts      # NodeManager (business logic)
 │   │   ├── nodeController.ts   # NodeController (UI logic)
 │   │   └── nodeConfigExtractors.ts # Config extractors
-│   ├── manageChain/            # Chain management
-│   │   └── manageChainOperations.ts # TPS/gas configuration
 │   ├── interactChain/          # Chain interaction
 │   │   └── interactChainOperations.ts
 │   ├── nodeConfig/             # Node config operations
@@ -95,8 +93,7 @@ src/
 ├── playbooks/                  # Playbook modules
 │   ├── types.ts                # Playbook interface
 │   ├── index.ts                # Playbook registry
-│   ├── malicious-validator/    # Example playbook
-│   └── tps-test/               # TPS test playbook
+│   └── malicious-validator/    # Example playbook
 ├── types/                      # Shared types
 │   ├── index.ts                # Enums, interfaces
 │   └── constants.ts            # Application constants
@@ -431,7 +428,6 @@ import { yourPlaybook } from './your-playbook';
 class PlaybookRegistry {
   constructor() {
     this.register(maliciousValidatorPlaybook);
-    this.register(tpsTestPlaybook);
     this.register(yourPlaybook); // Add your playbook here
   }
   // ...

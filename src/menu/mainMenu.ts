@@ -5,7 +5,6 @@ import logger from '../utils/logger.js';
 import { withCancellation } from '../utils/cancellation.js';
 import { getParentChain } from '../utils/parentChain.js';
 import { nodeConfigOperations } from '../core/nodeConfig/nodeConfigOperations.js';
-import { manageChainOperations } from '../core/manageChain/manageChainOperations.js';
 import { interactChainOperations } from '../core/interactChain/interactChainOperations.js';
 import { playbookRegistry } from '../playbooks/index.js';
 import { ChainEnv } from '../state/chainEnv/index.js';
@@ -16,7 +15,6 @@ import { DevnodeManager, DEVNODE_CONFIG, enterDevnodeMode } from '../devnode/ind
 import { enterRemoteRpcMode, getRemoteRpcConfig } from '../remoteRpc/index.js';
 import { initializeChainMode } from '../init.js';
 import { nodeController } from '../core/docker/nodeController.js';
-import { guard } from '../utils/guards.js';
 import { renderInfoTable, renderNodeTable, renderAccountsTable, buildNodeRow } from '../utils/statusDisplay.js';
 import chalk from 'chalk';
 
@@ -149,7 +147,6 @@ export class MainMenu {
         value: MenuAction.DEPLOY_CHAIN,
       },
       { name: `Manage Nodes ${chalk.dim('— Start, stop, and monitor Docker nodes')}`, value: MenuAction.MANAGE_NODES },
-      { name: `Manage the Chain ${chalk.dim('— Configure TPS and chain parameters')}`, value: MenuAction.MANAGE_CHAIN },
       {
         name: `Interact with Chain ${chalk.dim('— Deposit ETH and interact with contracts')}`,
         value: MenuAction.INTERACT_CHAIN,
@@ -173,10 +170,6 @@ export class MainMenu {
 
       case MenuAction.MANAGE_NODES:
         await this.handleManageNodes();
-        break;
-
-      case MenuAction.MANAGE_CHAIN:
-        await this.handleManageChain();
         break;
 
       case MenuAction.INTERACT_CHAIN:
@@ -228,15 +221,6 @@ export class MainMenu {
 
   private async handleManageNodes(): Promise<void> {
     await nodeController.showManagementMenu();
-  }
-
-  private async handleManageChain(): Promise<void> {
-    if (!guard.requireChainInitiated()) {
-      logger.newline();
-      return;
-    }
-
-    await manageChainOperations.showMenu();
   }
 
   private async handleInteractChain(): Promise<void> {
