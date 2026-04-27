@@ -1,4 +1,5 @@
 import { OperationMode } from '../types/index.js';
+import type { OperationContext } from '../utils/cancellation.js';
 
 /**
  * Playbook interface definition
@@ -22,6 +23,23 @@ export interface Playbook {
    * This method should handle all user interactions within the playbook
    */
   showMenu(): Promise<void>;
+
+  // Headless entry — used by the scripted runner to drive a playbook from a
+  // YAML/JSON file without inquirer. Implementations MUST share their core
+  // execution path with showMenu so the two stay in lockstep.
+  runHeadless?(command: string, params: unknown, ctx?: OperationContext): Promise<PlaybookActionResult>;
+
+  /** List headless commands this playbook accepts (for discoverability / --help). */
+  listHeadlessCommands?(): HeadlessCommandSpec[];
+}
+
+/**
+ * Describes a single headless command exposed by a playbook.
+ */
+export interface HeadlessCommandSpec {
+  command: string;
+  description: string;
+  supportedModes: OperationMode[];
 }
 
 /**
