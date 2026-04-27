@@ -161,6 +161,56 @@ The CLI includes modular playbooks for testing and demonstrations. Access playbo
 
 For more information about each playbook, including configuration options, usage examples, and troubleshooting, please refer to their respective README files linked above.
 
+## Headless / Scripted Mode
+
+Most playbooks can also be driven from a YAML or JSON script — no inquirer prompts, no menus. Intended for CI runs, regression checks, and AI-driven automation.
+
+```bash
+yarn run:script examples/malicious-mint.yaml
+```
+
+**Script schema**:
+
+```yaml
+mode: chain          # chain | devnode | remote
+playbook: <id>       # e.g. malicious-validator
+command: <command>   # e.g. malicious-mint, bold-challenge
+params: { ... }      # command-specific (see examples/)
+timeoutSeconds: 1800 # optional hard cap; cancels the run when exceeded
+```
+
+ETH amounts in `params` are accepted as decimal strings (e.g. `"0.05"`) or numbers and converted to `bigint` wei via `parseEther`.
+
+**Available headless commands**:
+
+| Playbook | Command | Modes |
+|---|---|---|
+| `malicious-validator` | `malicious-mint` | chain |
+| `malicious-validator` | `bold-challenge` | chain |
+
+**Output**:
+
+Each run produces three files under `./logs/`:
+
+- `cli-<ts>.log`   — human-readable text log
+- `cli-<ts>.jsonl` — one JSON object per log line (`{ts, level, message}`)
+- `result-<ts>.json` — final result envelope: `{script, logFile, jsonlFile, startedAt, finishedAt, result}`
+
+The JSONL file is meant for tools / agents — `tail -f logs/cli-*.jsonl | jq` follows progress in real time. The text log is what humans read.
+
+**Exit codes**:
+
+| Code | Meaning |
+|---|---|
+| 0   | success |
+| 1   | fatal / unexpected error |
+| 2   | playbook reported failure |
+| 3   | script document or env validation failed |
+| 64  | usage error (missing path) |
+| 130 | cancelled (timeout or SIGINT) |
+
+**Required env vars** are the same as the corresponding interactive mode — see the [Environment Variables](#environment-variables) section.
+
 ## Environment Variables
 
 | Variable | Required | Description |
