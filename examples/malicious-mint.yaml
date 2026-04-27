@@ -1,0 +1,22 @@
+# Headless run of the malicious-mint demo on chain mode (Arbitrum Sepolia by default).
+#
+# Required env vars (read from .env or shell):
+#   PARENT_CHAIN_RPC                  Arbitrum Sepolia (or other parent) RPC endpoint
+#   MAIN_PRIVATE_KEY                  Funded deployer key on the parent chain
+#
+# Optional env var:
+#   CHAIN_DEPLOYMENT_TRANSACTION_HASH If unset, runMaliciousMintDemo redeploys
+#                                     a fresh chain. If set and node-config.json
+#                                     matches, the existing chain is reused.
+#
+# Run:
+#   yarn run:script examples/malicious-mint.yaml
+
+mode: chain
+playbook: malicious-validator
+command: malicious-mint
+params:
+  mainDepositAmount: "0.005"
+  hackerDepositAmount: "0.001"
+  hackerFundingAmount: "0.002"
+# timeoutSeconds: 1800

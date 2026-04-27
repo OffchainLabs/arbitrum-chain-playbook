@@ -1,0 +1,53 @@
+/**
+ * Zod schemas for the headless / scripted runner.
+ *
+ * Top-level ScriptSchema validates the YAML/JSON envelope. Per-command
+ * schemas validate `params` once we know which playbook command we're
+ * dispatching to. ETH amounts are accepted as decimal strings or numbers
+ * and converted to bigint wei via parseEther.
+ */
+
+import { z } from 'zod';
+import { parseEther } from 'viem';
+
+const ethAmount = z.union([z.string(), z.number()]).transform((value, ctx) => {
+  try {
+    return parseEther(String(value));
+  } catch {
+    ctx.addIssue({ code: 'custom', message: `Invalid ETH amount: ${String(value)}` });
+    return z.NEVER;
+  }
+});
+
+export const OperationModeEnum = z.enum(['chain', 'devnode', 'remote']);
+export type ScriptOperationMode = z.infer<typeof OperationModeEnum>;
+
+export const ScriptSchema = z.object({
+  mode: OperationModeEnum,
+  playbook: z.string().min(1),
+  command: z.string().min(1),
+  params: z.record(z.string(), z.unknown()).optional().default({}),
+  /** Hard timeout for the run. Cancels the OperationContext when exceeded. */
+  timeoutSeconds: z.number().int().positive().optional(),
+});
+export type ScriptDocument = z.infer<typeof ScriptSchema>;
+
+export const MaliciousMintParamsSchema = z
+  .object({
+    mainDepositAmount: ethAmount.optional(),
+    hackerDepositAmount: ethAmount.optional(),
+    hackerFundingAmount: ethAmount.optional(),
+  })
+  .strict();
+export type MaliciousMintHeadlessInput = z.infer<typeof MaliciousMintParamsSchema>;
+
+export const BoldChallengeParamsSchema = z
+  .object({
+    maxWaitSeconds: z.number().int().positive().optional(),
+    pollIntervalMs: z.number().int().positive().optional(),
+    delayedMessageCount: z.number().int().nonnegative().optional(),
+    delayedMessageAmount: ethAmount.optional(),
+    childChainTxCount: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+export type BoldChallengeHeadlessInput = z.infer<typeof BoldChallengeParamsSchema>;
