@@ -32,7 +32,7 @@ import { initializeApp, initializeChainMode } from '../init.js';
 import { ChainEnv, setNodeManagerClass } from '../state/chainEnv/index.js';
 import { OperationMode } from '../types/index.js';
 import { withCancellation } from '../utils/cancellation.js';
-import { initFileLogger, getLogFilePath } from '../utils/fileLogger.js';
+import { initFileLogger, getLogFilePath, getJsonlFilePath, flushFileLogger } from '../utils/fileLogger.js';
 import { enterDevnodeMode } from '../devnode/devnodeMode.js';
 import { enterRemoteRpcMode } from '../remoteRpc/index.js';
 import { NodeManager } from '../core/docker/nodeManager.js';
@@ -59,10 +59,16 @@ async function main(): Promise<number> {
     return EXIT_USAGE;
   }
 
+  const startedAt = new Date().toISOString();
+
   initFileLogger();
   const logFile = getLogFilePath();
+  const jsonlFile = getJsonlFilePath();
   if (logFile) {
     logger.info(`Session log: ${logFile}`);
+  }
+  if (jsonlFile) {
+    logger.info(`JSONL log: ${jsonlFile}`);
   }
 
   // ---------- Load + parse ----------
@@ -144,7 +150,14 @@ async function main(): Promise<number> {
 
   // ---------- Write result.json ----------
   try {
-    const resultPath = writeResultFile(result);
+    const resultPath = writeResultFile({
+      script: { mode: script.mode, playbook: script.playbook, command: script.command },
+      logFile,
+      jsonlFile,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      result,
+    });
     logger.info(`Result: ${resultPath}`);
   } catch (err) {
     logger.warn(`Failed to write result.json: ${(err as Error).message}`);
@@ -239,10 +252,15 @@ function bigintReplacer(_key: string, value: unknown): unknown {
   return value;
 }
 
+async function shutdown(code: number): Promise<never> {
+  await flushFileLogger().catch(() => undefined);
+  process.exit(code);
+}
+
 main()
-  .then((code) => process.exit(code))
-  .catch((err) => {
+  .then((code) => shutdown(code))
+  .catch(async (err) => {
     // eslint-disable-next-line no-console
     console.error('Fatal:', err instanceof Error ? err.stack ?? err.message : err);
-    process.exit(EXIT_FATAL);
+    await shutdown(EXIT_FATAL);
   });
