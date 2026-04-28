@@ -40,6 +40,12 @@ export interface HeadlessCommandSpec {
   command: string;
   description: string;
   supportedModes: OperationMode[];
+  /**
+   * True when the command always deploys a fresh chain before running.
+   * Scripted/headless runners can use this to avoid restoring stale chain
+   * state before the command gets a chance to redeploy.
+   */
+  redeploysChain?: boolean;
 }
 
 /**

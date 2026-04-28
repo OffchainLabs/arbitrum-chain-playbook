@@ -16,6 +16,8 @@
 mode: chain
 playbook: malicious-validator
 command: bold-challenge
+# auto sees this command redeploys and skips stale chain restore before the demo.
+chainRestorePolicy: auto
 params:
   maxWaitSeconds: 7200
   delayedMessageCount: 10

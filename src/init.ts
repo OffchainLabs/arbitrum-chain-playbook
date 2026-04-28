@@ -30,6 +30,9 @@ export interface InitializeChainModeOptions {
   // between node-config.json and the deployment tx hash is detected, the
   // function throws so the script runner can surface a clear error.
   headless?: boolean;
+  // Headless-only restore policy. "fresh" skips existing deployment restore so
+  // commands that redeploy their own chain are not blocked by stale local state.
+  restorePolicy?: 'auto' | 'fresh' | 'reuse';
 }
 
 export async function initializeChainMode(opts: InitializeChainModeOptions = {}): Promise<void> {
@@ -48,6 +51,11 @@ export async function initializeChainMode(opts: InitializeChainModeOptions = {})
     logger.info(`Using parent chain RPC: ${config.app.parentChainRpc}`);
   } else if (hasTxHash) {
     logger.warn('PARENT_CHAIN_RPC is not set. Chain mode is disabled.');
+  }
+
+  if (opts.restorePolicy === 'fresh') {
+    logger.info('Skipping existing chain restore for fresh headless run.');
+    return;
   }
 
   if (hasTxHash && hasNodeConfig && hasParentChainRpc) {

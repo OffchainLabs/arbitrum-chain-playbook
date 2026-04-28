@@ -4,10 +4,9 @@
 #   PARENT_CHAIN_RPC                  Arbitrum Sepolia (or other parent) RPC endpoint
 #   MAIN_PRIVATE_KEY                  Funded deployer key on the parent chain
 #
-# Optional env var:
-#   CHAIN_DEPLOYMENT_TRANSACTION_HASH If unset, runMaliciousMintDemo redeploys
-#                                     a fresh chain. If set and node-config.json
-#                                     matches, the existing chain is reused.
+# Note: this headless command redeploys a fresh chain. If CHAIN_DEPLOYMENT_TRANSACTION_HASH
+# points at a different chain than node-config.json, chainRestorePolicy: auto prevents stale
+# local restore state from blocking the fresh demo.
 #
 # Run:
 #   yarn run:script examples/malicious-mint.yaml
@@ -15,6 +14,8 @@
 mode: chain
 playbook: malicious-validator
 command: malicious-mint
+# auto sees this command redeploys and skips stale chain restore before the demo.
+chainRestorePolicy: auto
 params:
   mainDepositAmount: "0.005"
   hackerDepositAmount: "0.001"

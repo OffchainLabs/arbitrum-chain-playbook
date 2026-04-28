@@ -25,9 +25,11 @@ import type { ZodError, ZodTypeAny } from 'zod';
 import {
   ScriptSchema,
   type ScriptDocument,
+  type ChainRestorePolicy,
   MaliciousMintParamsSchema,
   BoldChallengeParamsSchema,
 } from './schema.js';
+import type { HeadlessCommandSpec } from '../playbooks/types.js';
 import { initializeApp, initializeChainMode } from '../init.js';
 import { ChainEnv, setNodeManagerClass } from '../state/chainEnv/index.js';
 import { OperationMode } from '../types/index.js';
@@ -110,12 +112,13 @@ async function main(): Promise<number> {
     logger.error(`Playbook "${script.playbook}" does not support headless execution.`);
     return EXIT_VALIDATION;
   }
+  const commandSpec = playbook.listHeadlessCommands?.().find((spec) => spec.command === script.command);
 
   // ---------- Initialize app + mode ----------
   initializeApp();
 
   try {
-    await enterMode(script.mode);
+    await enterMode(script.mode, resolveChainRestorePolicy(script.chainRestorePolicy, commandSpec));
   } catch (err) {
     logger.error(`Failed to enter mode "${script.mode}": ${(err as Error).message}`);
     return EXIT_VALIDATION;
@@ -218,12 +221,22 @@ function formatZodError(err: ZodError): string {
     .join('\n');
 }
 
-async function enterMode(mode: 'chain' | 'devnode' | 'remote'): Promise<void> {
+function resolveChainRestorePolicy(
+  requestedPolicy: ChainRestorePolicy,
+  commandSpec: HeadlessCommandSpec | undefined,
+): 'fresh' | 'reuse' {
+  if (requestedPolicy === 'fresh' || requestedPolicy === 'reuse') {
+    return requestedPolicy;
+  }
+  return commandSpec?.redeploysChain ? 'fresh' : 'reuse';
+}
+
+async function enterMode(mode: 'chain' | 'devnode' | 'remote', restorePolicy: 'fresh' | 'reuse'): Promise<void> {
   const chainEnv = ChainEnv.getInstance();
   switch (mode) {
     case 'chain':
       chainEnv.setOperationMode(OperationMode.CHAIN);
-      await initializeChainMode({ headless: true });
+      await initializeChainMode({ headless: true, restorePolicy });
       return;
     case 'devnode':
       await enterDevnodeMode();

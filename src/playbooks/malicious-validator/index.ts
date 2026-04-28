@@ -653,11 +653,13 @@ class MaliciousValidatorPlaybook implements Playbook {
         command: HEADLESS_COMMAND_MALICIOUS_MINT,
         description: 'Run malicious mint demo end-to-end (deploy chain, mint, withdraw, monitor).',
         supportedModes: [OperationMode.CHAIN],
+        redeploysChain: true,
       },
       {
         command: HEADLESS_COMMAND_BOLD_CHALLENGE,
         description: 'Run BoLD challenge demo (honest vs malicious validator).',
         supportedModes: [OperationMode.CHAIN],
+        redeploysChain: true,
       },
     ];
   }

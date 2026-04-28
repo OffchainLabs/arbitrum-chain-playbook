@@ -22,11 +22,21 @@ const ethAmount = z.union([z.string(), z.number()]).transform((value, ctx) => {
 export const OperationModeEnum = z.enum(['chain', 'devnode', 'remote']);
 export type ScriptOperationMode = z.infer<typeof OperationModeEnum>;
 
+export const ChainRestorePolicyEnum = z.enum(['auto', 'fresh', 'reuse']);
+export type ChainRestorePolicy = z.infer<typeof ChainRestorePolicyEnum>;
+
 export const ScriptSchema = z.object({
   mode: OperationModeEnum,
   playbook: z.string().min(1),
   command: z.string().min(1),
   params: z.record(z.string(), z.unknown()).optional().default({}),
+  /**
+   * Headless-only chain restore behavior.
+   * - auto: infer from playbook metadata
+   * - fresh: skip restoring existing CHAIN_DEPLOYMENT_TRANSACTION_HASH/node-config.json
+   * - reuse: preserve the existing restore validation behavior
+   */
+  chainRestorePolicy: ChainRestorePolicyEnum.optional().default('auto'),
   /** Hard timeout for the run. Cancels the OperationContext when exceeded. */
   timeoutSeconds: z.number().int().positive().optional(),
 });
