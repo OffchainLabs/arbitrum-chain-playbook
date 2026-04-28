@@ -8,6 +8,7 @@
 import { decodeEventLog, type PublicClient, type Address } from 'viem';
 import logger from '../../utils/logger.js';
 import { cancellableSleep } from '../../utils/cancellation.js';
+import { writeStructuredEvent } from '../../utils/fileLogger.js';
 import { edgeChallengeManagerAbi } from './abis.js';
 import { type ChallengeState, type ChallengeEvent, type ChallengeEdge, EdgeStatus, EDGE_LEVEL_NAMES } from './types.js';
 
@@ -104,6 +105,7 @@ function processEdgeAdded(log: EventLog, blockNumber: bigint): ChallengeEvent | 
       },
     };
     challengeState.events.push(event);
+    writeChallengeEvent(event);
 
     // Real-time logging
     const levelName = getLevelName(level);
@@ -181,6 +183,7 @@ function processEdgeBisected(log: EventLog, blockNumber: bigint): ChallengeEvent
       },
     };
     challengeState.events.push(event);
+    writeChallengeEvent(event);
 
     // Real-time logging
     const levelName = level >= 0 ? getLevelName(level) : 'Unknown';
@@ -231,6 +234,7 @@ function processEdgeConfirmedByOneStepProof(log: EventLog, blockNumber: bigint):
     };
     challengeState.events.push(event);
     challengeState.confirmedEdgeId = edgeId;
+    writeChallengeEvent(event);
 
     // Log victory immediately
     logger.newline();
@@ -244,6 +248,10 @@ function processEdgeConfirmedByOneStepProof(log: EventLog, blockNumber: bigint):
     logger.debug(`Failed to process EdgeConfirmedByOneStepProof event: ${error}`);
     return null;
   }
+}
+
+function writeChallengeEvent(event: ChallengeEvent): void {
+  writeStructuredEvent('challenge', event);
 }
 
 /**

@@ -673,7 +673,7 @@ class MaliciousValidatorPlaybook implements Playbook {
       case HEADLESS_COMMAND_MALICIOUS_MINT: {
         const config = mergeMaliciousMintParams(params);
         const result = await this.executeMaliciousMint(config, ctx);
-        if (!result) {
+        if (!result || isFailedMaliciousMintResult(result)) {
           return { success: false, message: 'Malicious mint demo failed or was cancelled.' };
         }
         return { success: true, data: result };
@@ -719,6 +719,19 @@ function mergeChallengeDemoParams(params: unknown): ChallengeDemoConfig {
     delayedMessageAmount: p.delayedMessageAmount ?? DEFAULT_CHALLENGE_DEMO_CONFIG.delayedMessageAmount,
     childChainTxCount: p.childChainTxCount ?? DEFAULT_CHALLENGE_DEMO_CONFIG.childChainTxCount,
   };
+}
+
+function isFailedMaliciousMintResult(result: MaliciousMintResult): boolean {
+  return (
+    result.mainAddress === '0x0' &&
+    result.hackerAddress === '0x0' &&
+    result.hackerPrivateKey === '0x0' &&
+    result.mintAmount === 0n &&
+    result.withdrawAmount === 0n &&
+    result.confirmPeriodBlocks === 0n &&
+    result.bridgeBalanceInitial === 0n &&
+    result.bridgeBalanceFinal === 0n
+  );
 }
 
 export const maliciousValidatorPlaybook = new MaliciousValidatorPlaybook();

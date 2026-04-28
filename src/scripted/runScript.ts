@@ -14,7 +14,7 @@
  *   2   playbook reported failure
  *   3   script document or env validation failed
  *   64  usage error
- *   130 cancelled (timeout or SIGINT)
+ *   130 cancelled (timeout, SIGINT, or SIGTERM)
  */
 
 import 'dotenv/config';
@@ -29,17 +29,25 @@ import {
   MaliciousMintParamsSchema,
   BoldChallengeParamsSchema,
 } from './schema.js';
-import type { HeadlessCommandSpec } from '../playbooks/types.js';
 import { initializeApp, initializeChainMode } from '../init.js';
 import { ChainEnv, setNodeManagerClass } from '../state/chainEnv/index.js';
 import { OperationMode } from '../types/index.js';
-import { withCancellation } from '../utils/cancellation.js';
-import { initFileLogger, getLogFilePath, getJsonlFilePath, flushFileLogger } from '../utils/fileLogger.js';
+import { cancellationManager, withCancellation, type OperationContext } from '../utils/cancellation.js';
+import {
+  initFileLogger,
+  getLogFilePath,
+  getJsonlFilePath,
+  getTranscriptFilePath,
+  getEventsFilePath,
+  getLastErrorMessage,
+  flushFileLogger,
+} from '../utils/fileLogger.js';
 import { enterDevnodeMode } from '../devnode/devnodeMode.js';
 import { enterRemoteRpcMode } from '../remoteRpc/index.js';
 import { NodeManager } from '../core/docker/nodeManager.js';
 import logger from '../utils/logger.js';
 import playbookRegistry from '../playbooks/index.js';
+import type { HeadlessCommandSpec, PlaybookActionResult } from '../playbooks/types.js';
 import {
   HEADLESS_COMMAND_MALICIOUS_MINT,
   HEADLESS_COMMAND_BOLD_CHALLENGE,
@@ -68,14 +76,23 @@ async function main(): Promise<number> {
 
   const startedAt = new Date().toISOString();
 
-  initFileLogger();
+  initFileLogger({ captureRaw: true, structuredEvents: true });
   const logFile = getLogFilePath();
   const jsonlFile = getJsonlFilePath();
+  const transcriptFile = getTranscriptFilePath();
+  const eventsFile = getEventsFilePath();
+  installHeadlessSignalHandlers();
   if (logFile) {
     logger.info(`Session log: ${logFile}`);
   }
   if (jsonlFile) {
     logger.info(`JSONL log: ${jsonlFile}`);
+  }
+  if (transcriptFile) {
+    logger.info(`Transcript: ${transcriptFile}`);
+  }
+  if (eventsFile) {
+    logger.info(`Events: ${eventsFile}`);
   }
 
   // ---------- Load + parse ----------
@@ -118,6 +135,15 @@ async function main(): Promise<number> {
     return EXIT_VALIDATION;
   }
   const commandSpec = playbook.listHeadlessCommands?.().find((spec) => spec.command === script.command);
+  if (playbook.listHeadlessCommands && !commandSpec) {
+    logger.error(
+      `Playbook "${script.playbook}" does not support headless command "${script.command}". Known: ${playbook
+        .listHeadlessCommands()
+        .map((spec) => spec.command)
+        .join(', ')}`,
+    );
+    return EXIT_VALIDATION;
+  }
 
   // ---------- Initialize app + mode ----------
   initializeApp();
@@ -131,6 +157,17 @@ async function main(): Promise<number> {
     await enterMode(script.mode, resolveChainRestorePolicy(script.chainRestorePolicy, commandSpec));
   } catch (err) {
     logger.error(`Failed to enter mode "${script.mode}": ${(err as Error).message}`);
+    writeResultEnvelope({
+      script,
+      logFile,
+      jsonlFile,
+      transcriptFile,
+      eventsFile,
+      startedAt,
+      result: { success: false, message: `Failed to enter mode "${script.mode}".` },
+      failure: buildFailureDiagnostics(err, null, EXIT_VALIDATION),
+      exitCode: EXIT_VALIDATION,
+    });
     return EXIT_VALIDATION;
   }
 
@@ -145,38 +182,83 @@ async function main(): Promise<number> {
 
   // ---------- Run ----------
   let timedOut = false;
-  const result = await withCancellation(`headless:${script.playbook}:${script.command}`, async (ctx) => {
-    if (script.timeoutSeconds) {
-      const timer = setTimeout(() => {
-        timedOut = true;
-        logger.warn(`Timeout (${script.timeoutSeconds}s) reached. Cancelling...`);
-        ctx.cancel();
-      }, script.timeoutSeconds * 1000);
-      ctx.onCleanup(async () => clearTimeout(timer));
-    }
-    return await playbook.runHeadless!(script.command, params, ctx);
-  });
+  const runState: { activeCtx: OperationContext | null } = { activeCtx: null };
+  let result: PlaybookActionResult | null;
+  try {
+    result = await withCancellation(`headless:${script.playbook}:${script.command}`, async (ctx) => {
+      runState.activeCtx = ctx;
+      if (script.timeoutSeconds) {
+        const timer = setTimeout(() => {
+          timedOut = true;
+          logger.warn(`Timeout (${script.timeoutSeconds}s) reached. Cancelling...`);
+          ctx.cancel();
+        }, script.timeoutSeconds * 1000);
+        ctx.onCleanup(async () => clearTimeout(timer));
+      }
+      return await playbook.runHeadless!(script.command, params, ctx);
+    });
+  } catch (err) {
+    const exitCode = EXIT_FATAL;
+    writeResultEnvelope({
+      script,
+      logFile,
+      jsonlFile,
+      transcriptFile,
+      eventsFile,
+      startedAt,
+      result: { success: false, message: err instanceof Error ? err.message : String(err) },
+      failure: buildFailureDiagnostics(err, runState.activeCtx, exitCode),
+      exitCode,
+    });
+    throw err;
+  }
+
+  if (result && runState.activeCtx?.signal.aborted) {
+    await runState.activeCtx.runCleanup();
+    result = null;
+  }
 
   if (!result) {
+    const exitCode = EXIT_CANCELLED;
+    writeResultEnvelope({
+      script,
+      logFile,
+      jsonlFile,
+      transcriptFile,
+      eventsFile,
+      startedAt,
+      result: { success: false, message: timedOut ? 'Headless run timed out.' : 'Headless run was cancelled.' },
+      failure: {
+        reason: timedOut ? 'timeout' : 'cancelled',
+        failedAtStep: runState.activeCtx?.getCurrentStep() ?? null,
+        completedSteps: runState.activeCtx?.getCompletedSteps() ?? [],
+        exitCode,
+      },
+      exitCode,
+    });
     return timedOut ? EXIT_CANCELLED : EXIT_CANCELLED;
   }
 
-  // ---------- Write result.json ----------
-  try {
-    const resultPath = writeResultFile({
-      script: { mode: script.mode, playbook: script.playbook, command: script.command },
-      logFile,
-      jsonlFile,
-      startedAt,
-      finishedAt: new Date().toISOString(),
-      result,
-    });
-    logger.info(`Result: ${resultPath}`);
-  } catch (err) {
-    logger.warn(`Failed to write result.json: ${(err as Error).message}`);
-  }
+  const exitCode = result.success ? EXIT_OK : EXIT_BUSINESS_FAIL;
+  writeResultEnvelope({
+    script,
+    logFile,
+    jsonlFile,
+    transcriptFile,
+    eventsFile,
+    startedAt,
+    result,
+    failure: result.success
+      ? undefined
+      : buildFailureDiagnostics(
+          getLastErrorMessage() ?? result.message ?? 'Playbook reported failure.',
+          runState.activeCtx,
+          exitCode,
+        ),
+    exitCode,
+  });
 
-  return result.success ? EXIT_OK : EXIT_BUSINESS_FAIL;
+  return exitCode;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,9 +277,7 @@ function parseDocument(filePath: string, raw: string): { ok: true; value: unknow
   }
 }
 
-function validateCommandParams(
-  script: ScriptDocument,
-): { ok: true; value: unknown } | { ok: false; error: string } {
+function validateCommandParams(script: ScriptDocument): { ok: true; value: unknown } | { ok: false; error: string } {
   const schema = pickParamsSchema(script.playbook, script.command);
   if (!schema) {
     // No specific schema registered — pass through. The playbook's own
@@ -254,11 +334,72 @@ async function enterMode(mode: 'chain' | 'devnode' | 'remote', restorePolicy: 'f
     case 'remote': {
       const ok = await enterRemoteRpcMode();
       if (!ok) {
-        throw new Error('Remote RPC mode failed to initialize. Check CHAIN_RPC, PARENT_CHAIN_RPC, CHAIN_DEPLOYMENT_TRANSACTION_HASH.');
+        throw new Error(
+          'Remote RPC mode failed to initialize. Check CHAIN_RPC, PARENT_CHAIN_RPC, CHAIN_DEPLOYMENT_TRANSACTION_HASH.',
+        );
       }
       return;
     }
   }
+}
+
+interface ResultEnvelopeInput {
+  script: ScriptDocument;
+  logFile: string | null;
+  jsonlFile: string | null;
+  transcriptFile: string | null;
+  eventsFile: string | null;
+  startedAt: string;
+  result: PlaybookActionResult;
+  failure?: FailureDiagnostics;
+  exitCode: number;
+}
+
+interface FailureDiagnostics {
+  reason: string;
+  failedAtStep: string | null;
+  completedSteps: string[];
+  errorMessage?: string;
+  errorStack?: string;
+  exitCode: number;
+}
+
+function writeResultEnvelope(input: ResultEnvelopeInput): void {
+  try {
+    const resultPath = writeResultFile({
+      script: {
+        mode: input.script.mode,
+        playbook: input.script.playbook,
+        command: input.script.command,
+        chainRestorePolicy: input.script.chainRestorePolicy,
+        orphanContainerPolicy: input.script.orphanContainerPolicy,
+      },
+      logFile: input.logFile,
+      jsonlFile: input.jsonlFile,
+      transcriptFile: input.transcriptFile,
+      eventsFile: input.eventsFile,
+      startedAt: input.startedAt,
+      finishedAt: new Date().toISOString(),
+      exitCode: input.exitCode,
+      result: input.result,
+      ...(input.failure ? { failure: input.failure } : {}),
+    });
+    logger.info(`Result: ${resultPath}`);
+  } catch (err) {
+    logger.warn(`Failed to write result.json: ${(err as Error).message}`);
+  }
+}
+
+function buildFailureDiagnostics(error: unknown, ctx: OperationContext | null, exitCode: number): FailureDiagnostics {
+  const err = error instanceof Error ? error : null;
+  return {
+    reason: err?.name ?? 'failure',
+    failedAtStep: ctx?.getCurrentStep() ?? null,
+    completedSteps: ctx?.getCompletedSteps() ?? [],
+    errorMessage: err?.message ?? String(error),
+    ...(err?.stack ? { errorStack: err.stack } : {}),
+    exitCode,
+  };
 }
 
 function writeResultFile(result: unknown): string {
@@ -266,13 +407,51 @@ function writeResultFile(result: unknown): string {
   fs.mkdirSync(dir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   const out = path.join(dir, `result-${ts}.json`);
-  fs.writeFileSync(out, JSON.stringify(result, bigintReplacer, 2));
+  const serialized = JSON.stringify(result, bigintReplacer, 2);
+  fs.writeFileSync(out, serialized);
+  writeLatestFile(path.join(dir, 'latest-result.json'), serialized);
+  if (typeof (result as { logFile?: unknown }).logFile === 'string') {
+    writeLatestFile(path.join(dir, 'latest-log.txt'), `${(result as { logFile: string }).logFile}\n`);
+  }
+  if (typeof (result as { jsonlFile?: unknown }).jsonlFile === 'string') {
+    writeLatestFile(path.join(dir, 'latest-jsonl.txt'), `${(result as { jsonlFile: string }).jsonlFile}\n`);
+  }
+  if (typeof (result as { transcriptFile?: unknown }).transcriptFile === 'string') {
+    writeLatestFile(
+      path.join(dir, 'latest-transcript.txt'),
+      `${(result as { transcriptFile: string }).transcriptFile}\n`,
+    );
+  }
+  if (typeof (result as { eventsFile?: unknown }).eventsFile === 'string') {
+    writeLatestFile(path.join(dir, 'latest-events.txt'), `${(result as { eventsFile: string }).eventsFile}\n`);
+  }
   return out;
+}
+
+function writeLatestFile(targetPath: string, content: string): void {
+  const tmp = `${targetPath}.tmp`;
+  fs.writeFileSync(tmp, content);
+  fs.renameSync(tmp, targetPath);
 }
 
 function bigintReplacer(_key: string, value: unknown): unknown {
   if (typeof value === 'bigint') return value.toString();
   return value;
+}
+
+function installHeadlessSignalHandlers(): void {
+  let exiting = false;
+  const handler = (signal: NodeJS.Signals) => {
+    const handled = cancellationManager.handleSignal(signal);
+    if (handled || exiting) return;
+
+    exiting = true;
+    logger.warn(`${signal} received before a cancellable operation was active. Exiting.`);
+    void shutdown(EXIT_CANCELLED);
+  };
+
+  process.on('SIGINT', handler);
+  process.on('SIGTERM', handler);
 }
 
 async function shutdown(code: number): Promise<never> {
@@ -284,6 +463,6 @@ main()
   .then((code) => shutdown(code))
   .catch(async (err) => {
     // eslint-disable-next-line no-console
-    console.error('Fatal:', err instanceof Error ? err.stack ?? err.message : err);
+    console.error('Fatal:', err instanceof Error ? (err.stack ?? err.message) : err);
     await shutdown(EXIT_FATAL);
   });

@@ -175,6 +175,8 @@ yarn run:script examples/malicious-mint.yaml
 mode: chain          # chain | devnode | remote
 playbook: <id>       # e.g. malicious-validator
 command: <command>   # e.g. malicious-mint, bold-challenge
+chainRestorePolicy: auto    # auto | fresh | reuse; headless-only
+orphanContainerPolicy: warn # warn | stop; headless-only pre-existing nitro-* handling
 params: { ... }      # command-specific (see examples/)
 timeoutSeconds: 1800 # optional hard cap; cancels the run when exceeded
 ```
@@ -190,11 +192,14 @@ ETH amounts in `params` are accepted as decimal strings (e.g. `"0.05"`) or numbe
 
 **Output**:
 
-Each run produces three files under `./logs/`:
+Each run produces several files under `./logs/`:
 
 - `cli-<ts>.log`   — human-readable text log
 - `cli-<ts>.jsonl` — one JSON object per log line (`{ts, level, message}`)
-- `result-<ts>.json` — final result envelope: `{script, logFile, jsonlFile, startedAt, finishedAt, result}`
+- `transcript-<ts>.log` — headless transcript of raw operator-facing output
+- `events-<ts>.jsonl` — structured headless event stream when a playbook emits events
+- `result-<ts>.json` — final result envelope: `{script, logFile, jsonlFile, transcriptFile, eventsFile, startedAt, finishedAt, exitCode, result, failure?}`
+- `latest-result.json`, `latest-log.txt`, `latest-jsonl.txt` — pointers for tools that only need the latest run
 
 The JSONL file is meant for tools / agents — `tail -f logs/cli-*.jsonl | jq` follows progress in real time. The text log is what humans read.
 
@@ -207,7 +212,7 @@ The JSONL file is meant for tools / agents — `tail -f logs/cli-*.jsonl | jq` f
 | 2   | playbook reported failure |
 | 3   | script document or env validation failed |
 | 64  | usage error (missing path) |
-| 130 | cancelled (timeout or SIGINT) |
+| 130 | cancelled (timeout, SIGINT, or SIGTERM) |
 
 **Required env vars** are the same as the corresponding interactive mode — see the [Environment Variables](#environment-variables) section.
 

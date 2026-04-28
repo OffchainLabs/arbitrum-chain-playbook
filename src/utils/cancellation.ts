@@ -114,24 +114,29 @@ class CancellationManager {
    * @returns true if the signal was handled (caller should NOT exit),
    *          false if there is no active operation (caller should exit).
    */
-  handleSigint(): boolean {
+  handleSignal(signal: NodeJS.Signals = 'SIGINT'): boolean {
     if (!this.activeCtx) {
       return false;
     }
 
     if (this.forceExitPending) {
-      // Second Ctrl+C → force exit
+      // Second signal → force exit
       logger.newline();
       logger.warn('Force exit.');
-      process.exit(1);
+      process.exit(signal === 'SIGTERM' ? 143 : 1);
     }
 
-    // First Ctrl+C → cancel the operation
+    // First signal → cancel the operation
     logger.newline();
-    logger.warn('Cancelling operation... (press Ctrl+C again to force exit)');
+    const hint = signal === 'SIGTERM' ? 'send SIGTERM again' : 'press Ctrl+C again';
+    logger.warn(`Cancelling operation... (${hint} to force exit)`);
     this.activeCtx.cancel();
     this.forceExitPending = true;
     return true;
+  }
+
+  handleSigint(): boolean {
+    return this.handleSignal('SIGINT');
   }
 }
 
