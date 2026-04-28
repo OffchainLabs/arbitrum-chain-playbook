@@ -18,6 +18,8 @@ playbook: malicious-validator
 command: bold-challenge
 # auto sees this command redeploys and skips stale chain restore before the demo.
 chainRestorePolicy: auto
+# Set to "stop" only when you explicitly want headless to stop existing nitro-* containers first.
+orphanContainerPolicy: warn
 params:
   maxWaitSeconds: 7200
   delayedMessageCount: 10

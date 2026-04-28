@@ -22,6 +22,9 @@ import {
   DOCKER_NODE_CONFIG_PATH,
   LOCAL_DATA_DIR,
   DEFAULT_MAIN_NODE_HTTP_PORT,
+  HEADLESS_DOCKER_MODE_LABEL,
+  HEADLESS_DOCKER_SESSION_LABEL,
+  HEADLESS_SESSION_ENV,
 } from '../../types/constants.js';
 import logger from '../../utils/logger.js';
 import { renderNodeTable, buildNodeRow } from '../../utils/statusDisplay.js';
@@ -52,6 +55,12 @@ const formatChainId = (chainId: number | bigint | null | undefined): string =>
 
 const getContainerName = (chainId: number | bigint | null | undefined, id: string): string =>
   `${CONTAINER_NAME_PREFIX}-${formatChainId(chainId)}-${id}-${process.pid}`;
+
+const getHeadlessDockerLabelArgs = (): string[] => {
+  const sessionId = process.env[HEADLESS_SESSION_ENV];
+  if (!sessionId) return [];
+  return [`--label ${HEADLESS_DOCKER_MODE_LABEL}=headless`, `--label ${HEADLESS_DOCKER_SESSION_LABEL}=${sessionId}`];
+};
 
 const parseContainerName = (containerName: string): { chainId?: string; nodeId?: string } | null => {
   const parts = containerName.split('-');
@@ -397,6 +406,7 @@ export class NodeManager {
       const args: string[] = [
         'run -d',
         `--name ${containerName}`,
+        ...getHeadlessDockerLabelArgs(),
         `--user ${DOCKER_USER}`,
         `-v ${hostDataDir}:${DOCKER_DATA_DIR}`,
         `-v ${configPath}:${DOCKER_NODE_CONFIG_PATH}:ro`,

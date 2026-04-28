@@ -44,6 +44,11 @@ import {
   HEADLESS_COMMAND_MALICIOUS_MINT,
   HEADLESS_COMMAND_BOLD_CHALLENGE,
 } from '../playbooks/malicious-validator/index.js';
+import {
+  createHeadlessSessionId,
+  installHeadlessSessionEnv,
+  prepareHeadlessDockerContainers,
+} from './headlessDocker.js';
 
 const EXIT_OK = 0;
 const EXIT_FATAL = 1;
@@ -116,6 +121,11 @@ async function main(): Promise<number> {
 
   // ---------- Initialize app + mode ----------
   initializeApp();
+  const headlessSessionId = createHeadlessSessionId();
+  installHeadlessSessionEnv(headlessSessionId);
+  if (script.mode === 'chain') {
+    await prepareHeadlessDockerContainers(script.orphanContainerPolicy, headlessSessionId);
+  }
 
   try {
     await enterMode(script.mode, resolveChainRestorePolicy(script.chainRestorePolicy, commandSpec));

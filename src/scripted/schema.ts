@@ -25,6 +25,9 @@ export type ScriptOperationMode = z.infer<typeof OperationModeEnum>;
 export const ChainRestorePolicyEnum = z.enum(['auto', 'fresh', 'reuse']);
 export type ChainRestorePolicy = z.infer<typeof ChainRestorePolicyEnum>;
 
+export const OrphanContainerPolicyEnum = z.enum(['warn', 'stop']);
+export type OrphanContainerPolicy = z.infer<typeof OrphanContainerPolicyEnum>;
+
 export const ScriptSchema = z.object({
   mode: OperationModeEnum,
   playbook: z.string().min(1),
@@ -37,6 +40,12 @@ export const ScriptSchema = z.object({
    * - reuse: preserve the existing restore validation behavior
    */
   chainRestorePolicy: ChainRestorePolicyEnum.optional().default('auto'),
+  /**
+   * Headless-only handling for pre-existing nitro-* containers.
+   * warn is intentionally conservative so interactive users' containers are
+   * never stopped unless a script explicitly opts into stop.
+   */
+  orphanContainerPolicy: OrphanContainerPolicyEnum.optional().default('warn'),
   /** Hard timeout for the run. Cancels the OperationContext when exceeded. */
   timeoutSeconds: z.number().int().positive().optional(),
 });

@@ -16,6 +16,8 @@ playbook: malicious-validator
 command: malicious-mint
 # auto sees this command redeploys and skips stale chain restore before the demo.
 chainRestorePolicy: auto
+# Set to "stop" only when you explicitly want headless to stop existing nitro-* containers first.
+orphanContainerPolicy: warn
 params:
   mainDepositAmount: "0.005"
   hackerDepositAmount: "0.001"
