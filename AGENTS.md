@@ -48,7 +48,7 @@ If the user wants to **add a new playbook** or **understand the architecture**, 
 
 ## Pre-flight checklist
 
-Run all four before starting. Each takes < 1 second.
+Run all five before starting. Each takes < 1 second except the image build (skip-if-cached).
 
 ```bash
 # 1. Node version (must be 23+)
@@ -60,13 +60,60 @@ docker info > /dev/null 2>&1 && echo OK
 # 3. Required env vars present
 grep -E '^(MAIN_PRIVATE_KEY|PARENT_CHAIN_RPC)=.+' .env | wc -l   # expect: 2
 
-# 4. Required Docker image (for malicious-mint)
-docker image inspect jasonwan123/nitro-node-malicious-arbminter > /dev/null 2>&1 && echo OK
-# For bold-challenge also:
-docker image inspect nitro-malicious-playbook-challenge-demo:latest > /dev/null 2>&1 && echo OK
+# 4. Submodules populated (nitro-devnode pinned at 1e535a6)
+test -f nitro-devnode/run-dev-node.sh && echo OK
+
+# 5. Required Docker images (see "Obtaining Docker images" below if missing)
+docker image inspect jasonwan123/nitro-node-malicious-arbminter > /dev/null 2>&1 && echo OK   # malicious-mint
+docker image inspect nitro-malicious-playbook-challenge-demo:latest > /dev/null 2>&1 && echo OK # bold-challenge
 ```
 
-If any check fails, **stop and tell the user**, do not auto-fix env or pull images.
+If any check fails, follow the matching subsection below — **don't run the demo until they all pass**.
+
+### Fixing pre-flight failures
+
+| Failed check | Action | Cost |
+|---|---|---|
+| 1: Node | Tell the user; don't auto-install | — |
+| 2: Docker daemon | Tell the user to start Docker Desktop | — |
+| 3: env vars | Tell the user which var is missing; **never auto-write `.env`** | — |
+| 4: submodule | `git submodule update --init --recursive` (pulls ~5 MB) | < 30 s |
+| 5: images | See "Obtaining Docker images" — confirm with user first since the build is heavy | 0–25 min |
+
+### Obtaining Docker images
+
+There are two images. The first is public and pullable; the second must be built locally.
+
+**Image 1 — `jasonwan123/nitro-node-malicious-arbminter` (malicious-mint demo)**
+
+Public on Docker Hub. ~3.3 GB.
+
+```bash
+# Confirm with the user before pulling — this is a 3+ GB download.
+docker pull jasonwan123/nitro-node-malicious-arbminter:latest
+```
+
+**Image 2 — `nitro-malicious-playbook-challenge-demo:latest` (bold-challenge demo)**
+
+Must be built from the `nitro` repo's `Dockerfile.malicious`. Takes 15–25 minutes (compiles Rust prover + Solidity contracts + Go binaries). Build only once per machine.
+
+```bash
+# Confirm with the user before kicking this off — it's a long build.
+git clone --depth 1 \
+  --branch malicious-validator-readInbox \
+  --recurse-submodules --shallow-submodules \
+  https://github.com/OffchainLabs/nitro.git /tmp/nitro-malicious-build
+cd /tmp/nitro-malicious-build
+docker build -f Dockerfile.malicious -t nitro-malicious-remote-test .
+docker tag nitro-malicious-remote-test nitro-malicious-playbook-challenge-demo:latest
+
+# Optional: verify the build by checking module root hash:
+docker run --rm --entrypoint cat nitro-malicious-playbook-challenge-demo:latest \
+  /home/user/target/machines/latest/module-root.txt
+# Expected: 0xc2c02df561d4afaf9a1d6785f70098ec3874765c638e3cb6dbe8d3c83333e14c
+```
+
+Source of truth — if the commands above drift, defer to [src/playbooks/malicious-validator/README.md](./src/playbooks/malicious-validator/README.md#build-malicious-validator-image-challenge-demo-only).
 
 ### Optional: balance + leftover container scan
 
@@ -277,7 +324,7 @@ Inspect: cat the path in logs/latest-log.txt
 | `port is already allocated` on 9642 / 8449 | Leftover container from previous run | Set `orphanContainerPolicy: stop`, or `docker stop nitro-*` manually |
 | `node-config.json chain-id (X) does not match … chainId (Y). Refusing to overwrite` | `CHAIN_DEPLOYMENT_TRANSACTION_HASH` env var disagrees with leftover `node-config.json` | YAML should have `chainRestorePolicy: auto` (the example does); if it does, the playbook's `redeploysChain` flag may not be set. For redeployment commands this is a code bug — escalate. |
 | `Insufficient balance. Current: 0.0… ETH, Required: ~0.05 ETH` | Deployer key out of Sepolia ETH | Tell the user — get from https://www.alchemy.com/faucets/arbitrum-sepolia |
-| `Docker image "…" not found locally` | Image not pulled | Tell the user the exact image name and stop. Do not auto-pull. |
+| `Docker image "…" not found locally` | Image not pulled / built | See "Obtaining Docker images" above. Confirm cost (3 GB pull or 20-min build) with user before kicking off. |
 | `Message status: UNCONFIRMED` for many polls in malicious-mint | Normal — assertion covering the L2 send root hasn't been confirmed yet | Wait. Up to 10 min of polling is built-in. |
 | Run cancelled with exit 130 | Timeout, SIGINT, or SIGTERM | Check `.failure.failedAtStep` to see how far it got. The chain on Sepolia is real and intact. |
 
@@ -287,7 +334,7 @@ Inspect: cat the path in logs/latest-log.txt
 
 1. **Do not** keep a foreground command blocked for the entire run. Always background-and-poll.
 2. **Do not** poll faster than every 30 seconds — JSON-RPC backoff is real.
-3. **Do not** auto-`docker pull` images, auto-fund the deployer key, or auto-edit `.env`. Stop and tell the user.
+3. **Do not** auto-`docker pull` (3 GB), auto-`docker build` (20 min, heavy CPU), auto-fund the deployer key, or auto-edit `.env`. Confirm the cost with the user first; only proceed on explicit go-ahead.
 4. **Do not** delete `logs/`, `node-config*.json`, or `.arbitrum/` without confirming — they hold debug state for any failed run.
 5. **Do not** confuse `winner: "timeout"` with demo failure. It means the monitor stopped watching, not that the protocol failed.
 6. **Do not** report `success: true` without sanity-checking `.result.data` numeric fields (see "Sanity-check" sections above).
