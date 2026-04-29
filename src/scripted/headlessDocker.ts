@@ -1,4 +1,5 @@
 import { dockerCommand } from 'docker-cli-js';
+import { randomBytes } from 'crypto';
 import logger from '../utils/logger.js';
 import {
   CONTAINER_NAME_PREFIX,
@@ -16,7 +17,7 @@ interface NitroContainer {
 }
 
 export function createHeadlessSessionId(): string {
-  return `${Date.now()}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${Date.now()}-${process.pid}-${randomBytes(4).toString('hex')}`;
 }
 
 export function installHeadlessSessionEnv(sessionId: string): void {
