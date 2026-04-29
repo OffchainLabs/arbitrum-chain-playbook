@@ -25,7 +25,17 @@ export function initializeApp(): void {
   }
 }
 
-export async function initializeChainMode(): Promise<void> {
+export interface InitializeChainModeOptions {
+  // Headless mode: forbid any interactive prompt. If a chain-id mismatch
+  // between node-config.json and the deployment tx hash is detected, the
+  // function throws so the script runner can surface a clear error.
+  headless?: boolean;
+  // Headless-only restore policy. "fresh" skips existing deployment restore so
+  // commands that redeploy their own chain are not blocked by stale local state.
+  restorePolicy?: 'auto' | 'fresh' | 'reuse';
+}
+
+export async function initializeChainMode(opts: InitializeChainModeOptions = {}): Promise<void> {
   const hasTxHash = !!config.app.deploymentTxHash;
   const hasNodeConfig = fs.existsSync(getNodeConfigFilePath());
   const hasParentChainRpc = !!config.app.parentChainRpc;
@@ -43,6 +53,11 @@ export async function initializeChainMode(): Promise<void> {
     logger.warn('PARENT_CHAIN_RPC is not set. Chain mode is disabled.');
   }
 
+  if (opts.restorePolicy === 'fresh') {
+    logger.info('Skipping existing chain restore for fresh headless run.');
+    return;
+  }
+
   if (hasTxHash && hasNodeConfig && hasParentChainRpc) {
     const txChainId = await fetchChainIdFromTxHash();
     const configChainId = readChainIdFromNodeConfig();
@@ -52,6 +67,13 @@ export async function initializeChainMode(): Promise<void> {
       chainEnv.setDeploymentResult(result.chainConfig, result.nodeConfig, result.coreContracts, result.nodeConfigPaths);
       await discoverExistingContainersOnInit(chainEnv);
       return;
+    }
+
+    if (opts.headless) {
+      throw new Error(
+        `node-config.json chain-id (${configChainId}) does not match CHAIN_DEPLOYMENT_TRANSACTION_HASH chainId (${txChainId}). ` +
+          'Refusing to overwrite in headless mode. Delete node-config.json, fix the env var, or run the interactive CLI to confirm.',
+      );
     }
 
     const confirmed = await confirmOverwrite(configChainId, txChainId);

@@ -21,6 +21,13 @@ export const DOCKER_IMAGE_MALICIOUS_ARBMINTER = 'jasonwan123/nitro-node-maliciou
 /** Docker container name prefix */
 export const CONTAINER_NAME_PREFIX = 'nitro';
 
+/** Environment variable set by the headless runner to label Docker containers. */
+export const HEADLESS_SESSION_ENV = 'ARBITRUM_CHAIN_PLAYBOOK_HEADLESS_SESSION_ID';
+
+/** Docker labels applied only to headless-run containers. */
+export const HEADLESS_DOCKER_MODE_LABEL = 'arbitrum-chain-playbook.mode';
+export const HEADLESS_DOCKER_SESSION_LABEL = 'arbitrum-chain-playbook.session';
+
 /** Default Docker data directory inside container */
 export const DOCKER_DATA_DIR = '/home/user/.arbitrum';
 

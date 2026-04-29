@@ -22,7 +22,8 @@
     "test:docker": "RUN_DOCKER_TESTS=true node --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"ts-node/esm\", pathToFileURL(\"./\"));' --test tests/core/docker/**/*.ts",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "malicious-mint": "node --loader ts-node/esm scripts/maliciousMintAndWithdraw.ts"
+    "malicious-mint": "node --loader ts-node/esm scripts/maliciousMintAndWithdraw.ts",
+    "run:script": "node --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"ts-node/esm\", pathToFileURL(\"./\"));' src/scripted/runScript.ts"
   },
   "dependencies": {
     "@arbitrum/chain-sdk": "^v0.25.3",
@@ -36,14 +37,17 @@
     "dotenv": "^16.4.5",
     "glob": "^13.0.0",
     "inquirer": "8.2.6",
+    "js-yaml": "^4.1.1",
     "ora": "^9.3.0",
     "solc": "^0.8.33",
     "viem": "^1.20.0",
-    "winston": "^3.19.0"
+    "winston": "^3.19.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/chai": "^5.2.3",
     "@types/inquirer": "8.2.10",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "20.10.0",
     "chai": "4.3.10",
     "prettier": "^3.2.0",

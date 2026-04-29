@@ -110,7 +110,7 @@ export const logger = {
 
   raw: (message: string): void => {
     console.log(message);
-    fileLogger.debug(message);
+    fileLogger.raw(message);
   },
 
   newline: (): void => {

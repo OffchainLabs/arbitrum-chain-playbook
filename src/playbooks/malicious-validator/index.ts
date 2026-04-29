@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 import { copyFile, rm, readdir } from 'fs/promises';
 import { execSync } from 'child_process';
 import path from 'path';
-import { Playbook } from '../types.js';
+import { Playbook, PlaybookActionResult, HeadlessCommandSpec } from '../types.js';
 import logger from '../../utils/logger.js';
 import { StepTracker } from '../../utils/ui.js';
 import { NodeType, OperationMode } from '../../types/index.js';
@@ -13,7 +13,14 @@ import { ChainEnv } from '../../state/chainEnv/index.js';
 import { runMaliciousMintDemo } from './maliciousMintRunner.js';
 import { runChallengeDemo } from './challengeRunner.js';
 import { getRollupStatus } from './monitor.js';
-import { DEFAULT_MALICIOUS_MINT_CONFIG, DEFAULT_CHALLENGE_DEMO_CONFIG } from './types.js';
+import {
+  DEFAULT_MALICIOUS_MINT_CONFIG,
+  DEFAULT_CHALLENGE_DEMO_CONFIG,
+  type MaliciousMintConfig,
+  type MaliciousMintResult,
+  type ChallengeDemoConfig,
+  type ChallengeDemoResult,
+} from './types.js';
 import { checkOnChainIsClean } from '../../core/docker/validation.js';
 import {
   NODE_CONFIG_FILENAME,
@@ -21,9 +28,26 @@ import {
   LOCAL_DATA_DIR,
   DOCKER_IMAGE_MALICIOUS,
 } from '../../types/constants.js';
-import { withCancellation } from '../../utils/cancellation.js';
+import { withCancellation, type OperationContext } from '../../utils/cancellation.js';
 import { breadcrumb } from '../../utils/breadcrumb.js';
 import chalk from 'chalk';
+
+export const HEADLESS_COMMAND_MALICIOUS_MINT = 'malicious-mint';
+export const HEADLESS_COMMAND_BOLD_CHALLENGE = 'bold-challenge';
+
+export interface MaliciousMintHeadlessParams {
+  mainDepositAmount?: bigint;
+  hackerDepositAmount?: bigint;
+  hackerFundingAmount?: bigint;
+}
+
+export interface BoldChallengeHeadlessParams {
+  maxWaitSeconds?: number;
+  pollIntervalMs?: number;
+  delayedMessageCount?: number;
+  delayedMessageAmount?: bigint;
+  childChainTxCount?: number;
+}
 
 enum MaliciousValidatorAction {
   RUN_MALICIOUS_MINT = 'run_malicious_mint',
@@ -268,14 +292,25 @@ class MaliciousValidatorPlaybook implements Playbook {
       return;
     }
 
+    const result = await withCancellation('Malicious Mint Demo', (ctx) => this.executeMaliciousMint(config, ctx));
+    if (!result) return; // cancelled
+  }
+
+  // Shared core for malicious-mint, used by both the menu handler and the
+  // headless runner. Returns the demo result, or null if the run failed in a
+  // way the caller should treat as a soft failure (errors already logged).
+  private async executeMaliciousMint(
+    config: MaliciousMintConfig,
+    ctx: OperationContext,
+  ): Promise<MaliciousMintResult | null> {
     try {
-      const result = await withCancellation('Malicious Mint Demo', (ctx) => runMaliciousMintDemo(config, ctx));
-      if (!result) return; // cancelled
+      return await runMaliciousMintDemo(config, ctx);
     } catch (error) {
       logger.errorWithFix(
         `Demo failed: ${error instanceof Error ? error.message : String(error)}`,
         'Check Docker status, node logs (`docker logs <container>`), and account balances.',
       );
+      return null;
     }
   }
 
@@ -364,7 +399,17 @@ class MaliciousValidatorPlaybook implements Playbook {
       return;
     }
 
-    // Check that the malicious validator Docker image exists locally
+    const result = await withCancellation('Challenge Demo', (ctx) => this.executeChallengeDemo(config, ctx));
+    if (!result) return; // cancelled or precondition failed
+  }
+
+  // Shared core for bold-challenge. Performs the docker-image precondition
+  // check (was previously in handleRunChallengeDemo) so the headless path
+  // gets the same gate. Returns null on failure or cancellation.
+  private async executeChallengeDemo(
+    config: ChallengeDemoConfig,
+    ctx: OperationContext,
+  ): Promise<ChallengeDemoResult | null> {
     try {
       execSync(`docker image inspect ${DOCKER_IMAGE_MALICIOUS}`, { stdio: 'ignore' });
     } catch {
@@ -372,23 +417,23 @@ class MaliciousValidatorPlaybook implements Playbook {
         `Docker image "${DOCKER_IMAGE_MALICIOUS}" not found locally.`,
         'You need to build it first. See the "Build Malicious Validator Image" section in README.md for instructions.',
       );
-      return;
+      return null;
     }
 
     try {
-      const result = await withCancellation('Challenge Demo', (ctx) => runChallengeDemo(config, ctx));
-      if (!result) return; // cancelled
-
+      const result = await runChallengeDemo(config, ctx);
       if (result.success) {
         logger.success('Challenge demo completed successfully!');
       } else {
         logger.warn('Challenge demo completed but challenge may still be in progress.');
       }
+      return result;
     } catch (error) {
       logger.errorWithFix(
         `Challenge demo failed: ${error instanceof Error ? error.message : String(error)}`,
         'Check Docker status, node logs (`docker logs <container>`), and PARENT_CHAIN_RPC connectivity.',
       );
+      return null;
     }
   }
 
@@ -595,6 +640,98 @@ class MaliciousValidatorPlaybook implements Playbook {
       await nodeManager.stopAllNodes();
     }
   }
+
+  // ==========================================================================
+  // Headless entry — drives the same execute* methods as the menu handlers,
+  // bypassing inquirer. The script runner owns the OperationContext and is
+  // responsible for prior shape-validation of `params`.
+  // ==========================================================================
+
+  listHeadlessCommands(): HeadlessCommandSpec[] {
+    return [
+      {
+        command: HEADLESS_COMMAND_MALICIOUS_MINT,
+        description: 'Run malicious mint demo end-to-end (deploy chain, mint, withdraw, monitor).',
+        supportedModes: [OperationMode.CHAIN],
+        redeploysChain: true,
+      },
+      {
+        command: HEADLESS_COMMAND_BOLD_CHALLENGE,
+        description: 'Run BoLD challenge demo (honest vs malicious validator).',
+        supportedModes: [OperationMode.CHAIN],
+        redeploysChain: true,
+      },
+    ];
+  }
+
+  async runHeadless(command: string, params: unknown, ctx?: OperationContext): Promise<PlaybookActionResult> {
+    if (!ctx) {
+      return { success: false, message: 'runHeadless requires an OperationContext from the script runner.' };
+    }
+
+    switch (command) {
+      case HEADLESS_COMMAND_MALICIOUS_MINT: {
+        const config = mergeMaliciousMintParams(params);
+        const result = await this.executeMaliciousMint(config, ctx);
+        if (!result || isFailedMaliciousMintResult(result)) {
+          return { success: false, message: 'Malicious mint demo failed or was cancelled.' };
+        }
+        return { success: true, data: result };
+      }
+
+      case HEADLESS_COMMAND_BOLD_CHALLENGE: {
+        const config = mergeChallengeDemoParams(params);
+        const result = await this.executeChallengeDemo(config, ctx);
+        if (!result) {
+          return { success: false, message: 'BoLD challenge demo failed or was cancelled.' };
+        }
+        return { success: result.success, data: result };
+      }
+
+      default:
+        return {
+          success: false,
+          message: `Unknown command "${command}". Known: ${this.listHeadlessCommands()
+            .map((c) => c.command)
+            .join(', ')}`,
+        };
+    }
+  }
+}
+
+// Narrowing helpers — assume the script runner has already shape-validated
+// params via zod, so we only fill in defaults for omitted fields.
+function mergeMaliciousMintParams(params: unknown): MaliciousMintConfig {
+  const p = (params ?? {}) as MaliciousMintHeadlessParams;
+  return {
+    mainDepositAmount: p.mainDepositAmount ?? DEFAULT_MALICIOUS_MINT_CONFIG.mainDepositAmount,
+    hackerDepositAmount: p.hackerDepositAmount ?? DEFAULT_MALICIOUS_MINT_CONFIG.hackerDepositAmount,
+    hackerFundingAmount: p.hackerFundingAmount ?? DEFAULT_MALICIOUS_MINT_CONFIG.hackerFundingAmount,
+  };
+}
+
+function mergeChallengeDemoParams(params: unknown): ChallengeDemoConfig {
+  const p = (params ?? {}) as BoldChallengeHeadlessParams;
+  return {
+    maxWaitSeconds: p.maxWaitSeconds ?? DEFAULT_CHALLENGE_DEMO_CONFIG.maxWaitSeconds,
+    pollIntervalMs: p.pollIntervalMs ?? DEFAULT_CHALLENGE_DEMO_CONFIG.pollIntervalMs,
+    delayedMessageCount: p.delayedMessageCount ?? DEFAULT_CHALLENGE_DEMO_CONFIG.delayedMessageCount,
+    delayedMessageAmount: p.delayedMessageAmount ?? DEFAULT_CHALLENGE_DEMO_CONFIG.delayedMessageAmount,
+    childChainTxCount: p.childChainTxCount ?? DEFAULT_CHALLENGE_DEMO_CONFIG.childChainTxCount,
+  };
+}
+
+function isFailedMaliciousMintResult(result: MaliciousMintResult): boolean {
+  return (
+    result.mainAddress === '0x0' &&
+    result.hackerAddress === '0x0' &&
+    result.hackerPrivateKey === '0x0' &&
+    result.mintAmount === 0n &&
+    result.withdrawAmount === 0n &&
+    result.confirmPeriodBlocks === 0n &&
+    result.bridgeBalanceInitial === 0n &&
+    result.bridgeBalanceFinal === 0n
+  );
 }
 
 export const maliciousValidatorPlaybook = new MaliciousValidatorPlaybook();

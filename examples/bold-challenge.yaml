@@ -1,0 +1,27 @@
+# Headless run of the BoLD challenge demo on chain mode.
+#
+# Required env vars (read from .env or shell):
+#   PARENT_CHAIN_RPC                  Arbitrum Sepolia (or other parent) RPC endpoint
+#   MAIN_PRIVATE_KEY                  Funded deployer key on the parent chain
+#
+# Required local image:
+#   nitro-malicious-playbook-challenge-demo:latest
+#
+# Note: the BoLD challenge process can take 30–60 minutes on Sepolia. The
+# default maxWaitSeconds is 3 hours; tune it down for impatient demos.
+#
+# Run:
+#   yarn run:script examples/bold-challenge.yaml
+
+mode: chain
+playbook: malicious-validator
+command: bold-challenge
+# auto sees this command redeploys and skips stale chain restore before the demo.
+chainRestorePolicy: auto
+# Set to "stop" only when you explicitly want headless to stop existing nitro-* containers first.
+orphanContainerPolicy: warn
+params:
+  maxWaitSeconds: 7200
+  delayedMessageCount: 10
+  childChainTxCount: 5
+# timeoutSeconds: 7800   # belt-and-suspenders outer cap

@@ -323,17 +323,26 @@ Each playbook must implement the `Playbook` interface:
 export interface Playbook {
   /** Unique identifier */
   id: string;
-  
+
   /** Display name */
   name: string;
-  
+
   /** Brief description */
   description: string;
-  
+
+  /** Operation modes in which this playbook is runnable */
+  supportedModes: OperationMode[];
+
   /** Show interactive menu */
   showMenu(): Promise<void>;
+
+  /** Optional: drive the playbook non-interactively from `yarn run:script ...` */
+  runHeadless?(command: string, params: unknown, ctx?: OperationContext): Promise<PlaybookActionResult>;
+  listHeadlessCommands?(): HeadlessCommandSpec[];
 }
 ```
+
+**Headless contract**: when implementing `runHeadless`, factor your demo into a private `executeXxx(config, ctx)` that both the menu handler and the headless dispatch call. This keeps the two entry points in lockstep — anything you fix or add in interactive mode automatically applies to scripted runs. See `MaliciousValidatorPlaybook` for the canonical pattern.
 
 ## Adding a New Playbook
 
