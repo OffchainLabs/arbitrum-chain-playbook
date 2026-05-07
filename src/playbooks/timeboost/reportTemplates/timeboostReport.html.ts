@@ -32,7 +32,7 @@ export function renderReport(data: ReportData): string {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Timeboost Demo Report — ${escapeHtml(data.generatedAtIso)}</title>
+<title>Timeboost Auction Playbook Report — ${escapeHtml(data.generatedAtIso)}</title>
 <style>${css}</style>
 </head>
 <body>
@@ -55,7 +55,7 @@ ${renderFooter()}
 
 function renderHeader(d: ReportData): string {
   return `<header>
-  <h1>Timeboost Auction Demo Report</h1>
+  <h1>Timeboost Auction Playbook Report</h1>
   <div class="meta">
     <span><b>Chain ID:</b> ${d.chainId}</span>
     <span><b>Generated:</b> ${escapeHtml(d.generatedAtIso)}</span>
@@ -69,11 +69,12 @@ function renderHeader(d: ReportData): string {
     <span><b>Non-express delay:</b> ${d.nonExpressDelayMsec}ms</span>
   </div>
   <p class="caveat">
-    This is a Timeboost <em>lab demo</em>. The X axis below uses client-side wall clock
-    as its origin and reconstructs block boundaries from <code>blockNumber × 250ms</code>;
-    Arbitrum block timestamps are second-granular, so this is an illustrative — not
-    forensic — view. The authoritative signal is the <code>timeboosted</code> field
-    on each transaction's receipt (rendered as colour fill below).
+    This is a Timeboost <em>playbook demo</em>. The X axis below is pure client-side
+    wall-clock time (milliseconds), with t=0 at the earliest send across all experiment
+    pairs. Each bar runs from the <code>sendRawTransaction</code> /
+    <code>timeboost_sendExpressLaneTransaction</code> call to the moment the client
+    received its <code>eth_getTransactionReceipt</code> back. The authoritative signal
+    is still the <code>timeboosted</code> field on each receipt (rendered as colour fill).
   </p>
 </header>`;
 }
