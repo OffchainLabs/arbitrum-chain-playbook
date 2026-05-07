@@ -1,0 +1,40 @@
+# Headless run of the Timeboost auction lifecycle demo on chain mode (Arbitrum Sepolia by default).
+#
+# What it does:
+#   1. Deploys a fresh Orbit chain on the parent chain.
+#   2. Brings up a sequencer (with block-validator off, BoLD strategy cleared,
+#      track-block-metadata-from=1 so receipts surface the `timeboosted` field).
+#   3. Bridges ~0.55 ETH from L1 → L2 to fund the in-demo deployer.
+#   4. Deploys ExpressLaneAuction (impl + ProxyAdmin + TransparentUpgradeableProxy)
+#      and a MintableERC20 bidding token on the child chain.
+#   5. Generates Alice / Bob / Carol / Dave / Eve demo accounts and funds them.
+#   6. Starts Redis + bid-validator + auctioneer-server containers
+#      (named timeboost-redis, timeboost-bid-validator, timeboost-auctioneer).
+#   7. Patches sequencer config to enable Timeboost + restarts.
+#   8. Runs three auction rounds — Bob outbids Alice, Carol becomes controller.
+#   9. Issues 5 express-vs-normal experiment pairs and records receipts.
+#   10. Sends one tx from a non-controller and asserts NOT_EXPRESS_LANE_CONTROLLER.
+#   11. Runs one no-bid round (control).
+#   12. Writes an HTML report under logs/timeboost-report-<chainId>-<ISO>.html.
+#
+# Required env vars (read from .env or shell):
+#   PARENT_CHAIN_RPC                  Arbitrum Sepolia (or other parent) RPC endpoint
+#   MAIN_PRIVATE_KEY                  Funded deployer key on the parent chain (~0.7 sETH minimum)
+#
+# This headless command always redeploys a fresh chain (`redeploysChain: true`),
+# so chainRestorePolicy: auto prevents stale local restore state from blocking
+# the demo.
+#
+# Run:
+#   yarn run:script examples/timeboost-demo.yaml
+
+mode: chain
+playbook: timeboost
+command: run-full-demo
+# auto sees this command redeploys and skips stale chain restore before the demo.
+chainRestorePolicy: auto
+# Set to "stop" only when you explicitly want headless to stop existing nitro-* containers first.
+orphanContainerPolicy: warn
+# The full demo currently runs ~4 minutes end-to-end on Arbitrum Sepolia.
+# Setting an outer cap of 15 minutes leaves slack for slow parent-chain confirmations.
+timeoutSeconds: 900
