@@ -78,10 +78,7 @@ export function buildSubmissionMessageBytes(input: BuildSubmissionMessageInput):
  * Note: viem's `account.signMessage({ message: { raw: ... } })` already prepends
  * the EIP-191 prefix and hashes — we just feed it the raw bytes Nitro will reconstruct.
  */
-export async function signExpressLaneSubmission(
-  account: Account,
-  input: BuildSubmissionMessageInput,
-): Promise<Hex> {
+export async function signExpressLaneSubmission(account: Account, input: BuildSubmissionMessageInput): Promise<Hex> {
   const messageBytes = buildSubmissionMessageBytes(input);
 
   // viem's signMessage with `raw` prepends "\x19Ethereum Signed Message:\n<len>"

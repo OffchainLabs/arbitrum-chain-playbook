@@ -82,17 +82,25 @@ function renderSummaryCards(d: ReportData): string {
   const s = d.summary;
   return `<section class="cards">
   ${card('Pairs run', String(s.totalExperiments))}
-  ${card('Express timeboosted', `${s.expressTimeboostedCount} / ${s.totalExperiments}`,
-    s.expressTimeboostedCount === s.totalExperiments ? 'good' : 'bad')}
-  ${card('Normal timeboosted', `${s.normalTimeboostedCount} / ${s.totalExperiments}`,
-    s.normalTimeboostedCount === 0 ? 'good' : 'bad')}
+  ${card(
+    'Express timeboosted',
+    `${s.expressTimeboostedCount} / ${s.totalExperiments}`,
+    s.expressTimeboostedCount === s.totalExperiments ? 'good' : 'bad',
+  )}
+  ${card(
+    'Normal timeboosted',
+    `${s.normalTimeboostedCount} / ${s.totalExperiments}`,
+    s.normalTimeboostedCount === 0 ? 'good' : 'bad',
+  )}
   ${card('Cross-block normal', `${s.crossBlockNormalCount} / ${s.totalExperiments}`)}
   ${card('Express median latency', `${s.expressMedianLatencyMs} ms`)}
   ${card('Normal median latency', `${s.normalMedianLatencyMs} ms`)}
   ${card('No-bid rounds', String(s.noBidRoundsObserved))}
-  ${card('Unauthorized rejected',
+  ${card(
+    'Unauthorized rejected',
     `${s.unauthorizedRecognisedCount} / ${s.unauthorizedAttempts}`,
-    s.unauthorizedRecognisedCount === s.unauthorizedAttempts ? 'good' : 'bad')}
+    s.unauthorizedRecognisedCount === s.unauthorizedAttempts ? 'good' : 'bad',
+  )}
 </section>`;
 }
 
@@ -247,7 +255,10 @@ function renderNoBidSection(d: ReportData): string {
 
 function renderNoBidRound(r: NoBidRoundRecord): string {
   const items = r.observations
-    .map((o) => `<li>tx <code>${escapeHtml(o.txHash)}</code> — block ${o.blockNumber}, idx ${o.txIndex}, timeboosted=${o.timeboosted === null ? 'absent' : String(o.timeboosted)}</li>`)
+    .map(
+      (o) =>
+        `<li>tx <code>${escapeHtml(o.txHash)}</code> — block ${o.blockNumber}, idx ${o.txIndex}, timeboosted=${o.timeboosted === null ? 'absent' : String(o.timeboosted)}</li>`,
+    )
     .join('');
   return `<div class="nobid">
     <div class="nobid-h">Round ${r.round} — started ${new Date(r.startedAtMs).toISOString()}</div>
@@ -323,10 +334,7 @@ function renderEventFeed(events: AuctionEvent[]): string {
 // ---------------------------------------------------------------------------
 
 function renderRawTable(d: ReportData): string {
-  const rows = d.experiments.flatMap((e) => [
-    rowFor(e, e.expressLane, 'express'),
-    rowFor(e, e.normal, 'normal'),
-  ]);
+  const rows = d.experiments.flatMap((e) => [rowFor(e, e.expressLane, 'express'), rowFor(e, e.normal, 'normal')]);
   return `<section>
   <h2>Raw experiment data</h2>
   <table class="raw">

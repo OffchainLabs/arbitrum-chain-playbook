@@ -23,11 +23,7 @@ import {
   encodeDeployData,
   encodeFunctionData,
 } from 'viem';
-import {
-  expressLaneAuctionArtifact,
-  proxyAdminArtifact,
-  transparentProxyArtifact,
-} from './abis.js';
+import { expressLaneAuctionArtifact, proxyAdminArtifact, transparentProxyArtifact } from './abis.js';
 import { compileMintableERC20 } from './compileBidToken.js';
 
 // ---------------------------------------------------------------------------
@@ -95,18 +91,26 @@ export async function deployContracts(input: DeployContractsInput): Promise<Depl
   const biddingToken = await deployBiddingToken(input, deployTxs);
 
   // 2. ExpressLaneAuction implementation ------------------------------------
-  const auctionImpl = await deployContract(input, {
-    artifact: expressLaneAuctionArtifact,
-    args: [],
-    txKey: 'auctionImpl',
-  }, deployTxs);
+  const auctionImpl = await deployContract(
+    input,
+    {
+      artifact: expressLaneAuctionArtifact,
+      args: [],
+      txKey: 'auctionImpl',
+    },
+    deployTxs,
+  );
 
   // 3. ProxyAdmin (deployer becomes its owner) ------------------------------
-  const proxyAdmin = await deployContract(input, {
-    artifact: proxyAdminArtifact,
-    args: [input.deployer.address] as readonly unknown[], // initialOwner (OZ 5.x ctor)
-    txKey: 'proxyAdmin',
-  }, deployTxs);
+  const proxyAdmin = await deployContract(
+    input,
+    {
+      artifact: proxyAdminArtifact,
+      args: [input.deployer.address] as readonly unknown[], // initialOwner (OZ 5.x ctor)
+      txKey: 'proxyAdmin',
+    },
+    deployTxs,
+  );
 
   // 4. Build initialize calldata ----------------------------------------------
   // The auction's `initialize` takes one tuple argument (InitArgs).
@@ -123,11 +127,15 @@ export async function deployContracts(input: DeployContractsInput): Promise<Depl
   });
 
   // 5. TransparentUpgradeableProxy(impl, admin, data) -----------------------
-  const auctionProxy = await deployContract(input, {
-    artifact: transparentProxyArtifact,
-    args: [auctionImpl, proxyAdmin, initData] as readonly unknown[],
-    txKey: 'auctionProxy',
-  }, deployTxs);
+  const auctionProxy = await deployContract(
+    input,
+    {
+      artifact: transparentProxyArtifact,
+      args: [auctionImpl, proxyAdmin, initData] as readonly unknown[],
+      txKey: 'auctionProxy',
+    },
+    deployTxs,
+  );
 
   return {
     biddingToken,
@@ -285,12 +293,18 @@ function roundOffsetForRoundDuration(roundDurationSeconds: number): number {
 // Mirrors nitro/timeboost/roundtiminginfo.go.
 // ---------------------------------------------------------------------------
 
-export function currentRoundFor(deployed: Pick<DeployedContracts, 'initialOffsetTimestamp' | 'timing'>, nowSec?: number): number {
+export function currentRoundFor(
+  deployed: Pick<DeployedContracts, 'initialOffsetTimestamp' | 'timing'>,
+  nowSec?: number,
+): number {
   const t = nowSec ?? Math.floor(Date.now() / 1000);
   return Math.floor((t - deployed.initialOffsetTimestamp) / deployed.timing.roundDurationSeconds);
 }
 
-export function roundStartTimestamp(deployed: Pick<DeployedContracts, 'initialOffsetTimestamp' | 'timing'>, round: number): number {
+export function roundStartTimestamp(
+  deployed: Pick<DeployedContracts, 'initialOffsetTimestamp' | 'timing'>,
+  round: number,
+): number {
   return deployed.initialOffsetTimestamp + round * deployed.timing.roundDurationSeconds;
 }
 

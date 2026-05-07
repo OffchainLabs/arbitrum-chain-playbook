@@ -121,6 +121,4 @@ function ensureApiNamespaces(cfg: Record<string, unknown>, key: 'http' | 'ws'): 
  * host-gateway alias that lets `host.docker.internal` resolve to the host
  * (no-op on macOS where Docker Desktop sets it automatically).
  */
-export const TIMEBOOST_EXTRA_DOCKER_ARGS: string[] = [
-  '--add-host=host.docker.internal:host-gateway',
-];
+export const TIMEBOOST_EXTRA_DOCKER_ARGS: string[] = ['--add-host=host.docker.internal:host-gateway'];

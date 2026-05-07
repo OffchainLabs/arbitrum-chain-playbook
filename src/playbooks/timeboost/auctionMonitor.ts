@@ -12,13 +12,7 @@
  * for the HTML report.
  */
 
-import {
-  type Address,
-  type Hash,
-  type PublicClient,
-  decodeEventLog,
-  parseAbi,
-} from 'viem';
+import { type Address, type Hash, type PublicClient, decodeEventLog, parseAbi } from 'viem';
 import { expressLaneAuctionArtifact } from './abis.js';
 import type { AuctionEvent } from './types.js';
 
@@ -87,7 +81,13 @@ export function startAuctionMonitor(
   };
 }
 
-function tryDecode(log_: { address: Address; data: `0x${string}`; topics: `0x${string}`[]; blockNumber: bigint; transactionHash: Hash | null }): AuctionEvent | null {
+function tryDecode(log_: {
+  address: Address;
+  data: `0x${string}`;
+  topics: `0x${string}`[];
+  blockNumber: bigint;
+  transactionHash: Hash | null;
+}): AuctionEvent | null {
   try {
     const decoded = decodeEventLog({
       abi: expressLaneAuctionArtifact.abi,

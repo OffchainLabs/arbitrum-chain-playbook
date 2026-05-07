@@ -71,9 +71,7 @@ export function computeSummary(input: BuildReportInput): ReportSummary {
   const elLatencies = input.experiments.map(
     (e) => (e.expressLane.receiptAtMs ?? e.expressLane.sentAtMs) - e.expressLane.sentAtMs,
   );
-  const noLatencies = input.experiments.map(
-    (e) => (e.normal.receiptAtMs ?? e.normal.sentAtMs) - e.normal.sentAtMs,
-  );
+  const noLatencies = input.experiments.map((e) => (e.normal.receiptAtMs ?? e.normal.sentAtMs) - e.normal.sentAtMs);
 
   const crossBlock = input.experiments.filter((e) => e.normal.blockNumber > e.expressLane.blockNumber).length;
 

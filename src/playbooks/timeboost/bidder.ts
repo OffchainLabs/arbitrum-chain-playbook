@@ -85,18 +85,28 @@ export async function approveAndDeposit(input: DepositInput): Promise<{ approveT
   const bidder = privateKeyToAccount(bidderPrivateKey);
 
   log.info(`[${bidder.address}] approving ${amount} tokens for auction ${auctionAddress}...`);
-  const approveTx = await sendCall(publicClient, bidder, biddingTokenAddress, encodeFunctionData({
-    abi: erc20MinimalAbi,
-    functionName: 'approve',
-    args: [auctionAddress, amount],
-  }));
+  const approveTx = await sendCall(
+    publicClient,
+    bidder,
+    biddingTokenAddress,
+    encodeFunctionData({
+      abi: erc20MinimalAbi,
+      functionName: 'approve',
+      args: [auctionAddress, amount],
+    }),
+  );
 
   log.info(`[${bidder.address}] depositing ${amount} into auction...`);
-  const depositTx = await sendCall(publicClient, bidder, auctionAddress, (encodeFunctionData as unknown as (a: unknown) => Hex)({
-    abi: expressLaneAuctionArtifact.abi,
-    functionName: 'deposit',
-    args: [amount],
-  }));
+  const depositTx = await sendCall(
+    publicClient,
+    bidder,
+    auctionAddress,
+    (encodeFunctionData as unknown as (a: unknown) => Hex)({
+      abi: expressLaneAuctionArtifact.abi,
+      functionName: 'deposit',
+      args: [amount],
+    }),
+  );
 
   log.success(`[${bidder.address}] deposit confirmed`);
   return { approveTx, depositTx };
@@ -106,10 +116,7 @@ export async function approveAndDeposit(input: DepositInput): Promise<{ approveT
 // Bid signing & submission
 // ---------------------------------------------------------------------------
 
-export async function readDomainSeparator(
-  publicClient: PublicClient,
-  auctionAddress: Address,
-): Promise<Hex> {
+export async function readDomainSeparator(publicClient: PublicClient, auctionAddress: Address): Promise<Hex> {
   const result = (await publicClient.readContract({
     address: auctionAddress,
     abi: expressLaneAuctionArtifact.abi,
@@ -132,9 +139,7 @@ export function bidHash(input: {
   expressLaneController: Address;
   amount: bigint;
 }): Hex {
-  const typeHash = keccak256(
-    toBytes('Bid(uint64 round,address expressLaneController,uint256 amount)'),
-  );
+  const typeHash = keccak256(toBytes('Bid(uint64 round,address expressLaneController,uint256 amount)'));
 
   const structHash = keccak256(
     encodeAbiParameters(

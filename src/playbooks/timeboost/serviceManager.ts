@@ -199,10 +199,7 @@ async function waitForRedis(timeoutMs = 15_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const r = (await dockerCommand(
-        `exec ${REDIS_CONTAINER} redis-cli PING`,
-        { echo: false },
-      )) as { raw?: string };
+      const r = (await dockerCommand(`exec ${REDIS_CONTAINER} redis-cli PING`, { echo: false })) as { raw?: string };
       if (r?.raw?.includes('PONG')) return;
     } catch {
       // not yet up
@@ -228,9 +225,7 @@ async function waitForLogLine(container: string, pattern: RegExp, timeoutMs: num
     }
     await sleep(500);
   }
-  log.warn(
-    `Container ${container} did not log a line matching ${pattern} within ${timeoutMs}ms — continuing anyway`,
-  );
+  log.warn(`Container ${container} did not log a line matching ${pattern} within ${timeoutMs}ms — continuing anyway`);
 }
 
 function sleep(ms: number): Promise<void> {

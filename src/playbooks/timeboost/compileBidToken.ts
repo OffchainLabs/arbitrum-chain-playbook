@@ -105,7 +105,7 @@ export function compileMintableERC20(): CompiledArtifact {
 
   cached = {
     abi: contract.abi,
-    bytecode: (`0x${contract.evm.bytecode.object}`) as Hex,
+    bytecode: `0x${contract.evm.bytecode.object}` as Hex,
   };
   return cached;
 }

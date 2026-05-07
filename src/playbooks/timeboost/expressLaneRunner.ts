@@ -17,11 +17,7 @@ import {
   parseEther,
   toHex,
 } from 'viem';
-import {
-  DONT_CARE_SEQUENCE,
-  type JsonExpressLaneSubmission,
-  type TxObservation,
-} from './types.js';
+import { DONT_CARE_SEQUENCE, type JsonExpressLaneSubmission, type TxObservation } from './types.js';
 import { signExpressLaneSubmission } from './expressLaneSigner.js';
 
 /**
@@ -82,9 +78,7 @@ export interface ExpressLaneSubmitResult {
  * Sign + wrap + POST. The function returns as soon as the sequencer accepts the
  * submission; the caller is responsible for polling the receipt afterwards.
  */
-export async function submitExpressLaneTransaction(
-  input: ExpressLaneSubmitInput,
-): Promise<ExpressLaneSubmitResult> {
+export async function submitExpressLaneTransaction(input: ExpressLaneSubmitInput): Promise<ExpressLaneSubmitResult> {
   const {
     controllerAccount,
     childClient,
@@ -202,11 +196,7 @@ export class TimeboostRpcError extends Error {
  * `timeboost_sendExpressLaneTransaction` returns `null` on success, which some
  * viem versions reject as "missing result".
  */
-export async function rawRpcCall<T = unknown>(
-  url: string,
-  method: string,
-  params: unknown[],
-): Promise<T | null> {
+export async function rawRpcCall<T = unknown>(url: string, method: string, params: unknown[]): Promise<T | null> {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

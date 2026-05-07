@@ -138,11 +138,7 @@ class TimeboostPlaybook implements Playbook {
     ];
   }
 
-  async runHeadless(
-    command: string,
-    _params: unknown,
-    ctx?: OperationContext,
-  ): Promise<PlaybookActionResult> {
+  async runHeadless(command: string, _params: unknown, ctx?: OperationContext): Promise<PlaybookActionResult> {
     if (command !== 'run-full-demo') {
       return { success: false, message: `Unknown command: ${command}` };
     }

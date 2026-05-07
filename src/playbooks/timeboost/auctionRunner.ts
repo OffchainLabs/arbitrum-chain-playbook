@@ -63,10 +63,7 @@ export interface AuctionRoundResult {
  * having already started `auctionMonitor` so this function can read events
  * out of it.
  */
-export async function runOneAuction(
-  input: RunOneAuctionInput,
-  events: AuctionEvent[],
-): Promise<AuctionRoundResult> {
+export async function runOneAuction(input: RunOneAuctionInput, events: AuctionEvent[]): Promise<AuctionRoundResult> {
   // -------------------------------------------------------------------------
   // 1. Optional deposits (first time only)
   // -------------------------------------------------------------------------
@@ -137,15 +134,11 @@ export async function runOneAuction(
   const resolvedAt = events
     .slice()
     .reverse()
-    .find((e) => e.kind === 'AuctionResolved' && (e.raw?.round?.toString() === bidForRound.toString()));
+    .find((e) => e.kind === 'AuctionResolved' && e.raw?.round?.toString() === bidForRound.toString());
   const controllerSetAt = events
     .slice()
     .reverse()
-    .find(
-      (e) =>
-        e.kind === 'SetExpressLaneController' &&
-        (e.raw?.round?.toString() === bidForRound.toString()),
-    );
+    .find((e) => e.kind === 'SetExpressLaneController' && e.raw?.round?.toString() === bidForRound.toString());
 
   if (resolvedAt) log.success(`AuctionResolved seen: ${resolvedAt.description}`);
   else log.warn(`AuctionResolved for round ${bidForRound} not observed yet.`);

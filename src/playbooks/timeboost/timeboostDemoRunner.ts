@@ -43,12 +43,7 @@ import { runExperimentPair } from './experimentRecorder.js';
 import { runUnauthorizedAttempt } from './unauthorizedTxRunner.js';
 import { generateReport } from './reportGenerator.js';
 import { erc20MinimalAbi } from './abis.js';
-import type {
-  AuctionEvent,
-  ExperimentRecord,
-  NoBidRoundRecord,
-  UnauthorizedAttemptRecord,
-} from './types.js';
+import type { AuctionEvent, ExperimentRecord, NoBidRoundRecord, UnauthorizedAttemptRecord } from './types.js';
 import { encodeFunctionData, type Address, type Hex } from 'viem';
 
 // ---------------------------------------------------------------------------
@@ -257,11 +252,14 @@ export async function runFullTimeboostDemo(ctx?: OperationContext): Promise<Time
   ctx?.stepStarted('Patch sequencer config + restart');
   tracker.start();
 
-  patchSequencerConfigForTimeboost({
-    auctionContractAddress: deployed.auctionProxy,
-    auctioneerAddress: auctioneer.address,
-    redisUrl: 'redis://host.docker.internal:6379',
-  }, path.join(process.cwd(), NODE_CONFIG_FILENAME));
+  patchSequencerConfigForTimeboost(
+    {
+      auctionContractAddress: deployed.auctionProxy,
+      auctioneerAddress: auctioneer.address,
+      redisUrl: 'redis://host.docker.internal:6379',
+    },
+    path.join(process.cwd(), NODE_CONFIG_FILENAME),
+  );
 
   await nodeManager.stopNode(main.config.id);
   const restarted = await nodeManager.startNode(NodeType.MAIN, {
@@ -429,9 +427,7 @@ export async function runFullTimeboostDemo(ctx?: OperationContext): Promise<Time
     round: noBidRound,
   });
 
-  const noBidRounds: NoBidRoundRecord[] = [
-    { round: noBidRound, startedAtMs: Date.now(), observations: noBidObs },
-  ];
+  const noBidRounds: NoBidRoundRecord[] = [{ round: noBidRound, startedAtMs: Date.now(), observations: noBidObs }];
   ctx?.stepCompleted('No-bid round (control)');
 
   // -------------------------------------------------------------------------
@@ -607,7 +603,9 @@ async function sendCall(
   await pub.waitForTransactionReceipt({ hash: txHash });
 }
 
-async function ensureMainNode(nodeManager: NonNullable<ChainEnv['nodeManager']>): Promise<NonNullable<Awaited<ReturnType<NonNullable<ChainEnv['nodeManager']>['startNode']>>>> {
+async function ensureMainNode(
+  nodeManager: NonNullable<ChainEnv['nodeManager']>,
+): Promise<NonNullable<Awaited<ReturnType<NonNullable<ChainEnv['nodeManager']>['startNode']>>>> {
   const running = nodeManager.getRunningNodes().find((n) => n.config.nodeType === NodeType.MAIN);
   if (running) return running;
   const started = await nodeManager.startNode(NodeType.MAIN);
@@ -695,7 +693,9 @@ async function topUpDeployerOnL2(args: {
   });
 
   logger.info(`Bridging ${formatEther(need)} ETH from L1 → L2 (deposit via inbox)...`);
-  const txHash = await (parentWallet as unknown as { writeContract: (a: unknown) => Promise<`0x${string}`> }).writeContract({
+  const txHash = await (
+    parentWallet as unknown as { writeContract: (a: unknown) => Promise<`0x${string}`> }
+  ).writeContract({
     address: inbox,
     abi: inboxAbi,
     functionName: 'depositEth',

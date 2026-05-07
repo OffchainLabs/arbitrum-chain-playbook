@@ -7,11 +7,7 @@
  * has no way to tell that the sequencer actually enforces the controller right.
  */
 
-import {
-  type Address,
-  type LocalAccount,
-  type PublicClient,
-} from 'viem';
+import { type Address, type LocalAccount, type PublicClient } from 'viem';
 import { submitExpressLaneTransaction, TimeboostRpcError } from './expressLaneRunner.js';
 import type { UnauthorizedAttemptRecord } from './types.js';
 
@@ -44,18 +40,8 @@ export interface RunUnauthorizedAttemptInput {
  * Run the unauthorized attempt and return a structured record.
  * Always resolves (even on success — which would itself be a "negative finding").
  */
-export async function runUnauthorizedAttempt(
-  input: RunUnauthorizedAttemptInput,
-): Promise<UnauthorizedAttemptRecord> {
-  const {
-    unauthorizedAccount,
-    childClient,
-    chainId,
-    round,
-    auctionContractAddress,
-    sequencerRpcUrl,
-    to,
-  } = input;
+export async function runUnauthorizedAttempt(input: RunUnauthorizedAttemptInput): Promise<UnauthorizedAttemptRecord> {
+  const { unauthorizedAccount, childClient, chainId, round, auctionContractAddress, sequencerRpcUrl, to } = input;
 
   log.section('Unauthorized express-lane submission');
   log.info(`Sender ${unauthorizedAccount.address} is NOT the controller for round ${round}.`);

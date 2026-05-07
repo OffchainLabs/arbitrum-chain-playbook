@@ -56,9 +56,7 @@ export function snapshotRound(timing: RoundTiming, nowSec: number = Math.floor(D
 }
 
 export function formatRoundLine(snap: RoundSnapshot): string {
-  const ac = snap.insideAuctionClosingWindow
-    ? 'auction CLOSED'
-    : `auction closes in ${snap.secondsToAuctionClose}s`;
+  const ac = snap.insideAuctionClosingWindow ? 'auction CLOSED' : `auction closes in ${snap.secondsToAuctionClose}s`;
   return `Round ${snap.current} │ +${snap.elapsedInRound}s / next in ${snap.secondsToNextRound}s │ ${ac}`;
 }
 

@@ -10,22 +10,15 @@
  * absent on chains where `track-block-metadata-from` is not configured.
  */
 
-import {
-  type Address,
-  type Hash,
-  type Hex,
-  type LocalAccount,
-  type PublicClient,
-  parseEther,
-} from 'viem';
-import {
-  submitExpressLaneTransaction,
-  type ExpressLaneSubmitInput,
-  type RunnerLogger,
-} from './expressLaneRunner.js';
+import { type Address, type Hash, type Hex, type LocalAccount, type PublicClient, parseEther } from 'viem';
+import { submitExpressLaneTransaction, type ExpressLaneSubmitInput, type RunnerLogger } from './expressLaneRunner.js';
 import type { ExperimentRecord, TxObservation } from './types.js';
 
-let recorderLogger: RunnerLogger & { section: (m: string) => void; raw: (m: string) => void; success: (m: string) => void } = {
+let recorderLogger: RunnerLogger & {
+  section: (m: string) => void;
+  raw: (m: string) => void;
+  success: (m: string) => void;
+} = {
   event: (m) => console.log('•', m),
   info: (m) => console.log('ℹ', m),
   warn: (m) => console.log('⚠', m),
@@ -84,15 +77,7 @@ export interface NormalTxInput {
  * actual ~200ms wall-clock gap that Timeboost induces.
  */
 export async function runExperimentPair(input: RunExperimentInput): Promise<ExperimentRecord> {
-  const {
-    index,
-    round,
-    controller,
-    expressLaneSubmit,
-    normalTx,
-    childClient,
-    receiptTimeoutMs = 30_000,
-  } = input;
+  const { index, round, controller, expressLaneSubmit, normalTx, childClient, receiptTimeoutMs = 30_000 } = input;
 
   recorderLogger.section(`Experiment #${index + 1}: round ${round}`);
 
@@ -250,15 +235,25 @@ function printPairSummary(el: TxObservation, normal: TxObservation): void {
     return `${blockMs - o.sentAtMs}ms`;
   };
 
-  recorderLogger.raw(`  express   block=${el.blockNumber} idx=${el.txIndex}     timeboosted=${fmt(el.timeboosted)}  delta=${lag(el)}`);
-  recorderLogger.raw(`  normal    block=${normal.blockNumber} idx=${normal.txIndex}     timeboosted=${fmt(normal.timeboosted)}  delta=${lag(normal)}`);
+  recorderLogger.raw(
+    `  express   block=${el.blockNumber} idx=${el.txIndex}     timeboosted=${fmt(el.timeboosted)}  delta=${lag(el)}`,
+  );
+  recorderLogger.raw(
+    `  normal    block=${normal.blockNumber} idx=${normal.txIndex}     timeboosted=${fmt(normal.timeboosted)}  delta=${lag(normal)}`,
+  );
 
   if (el.blockNumber < normal.blockNumber) {
-    recorderLogger.success(`  → normal tx landed ${normal.blockNumber - el.blockNumber} block(s) later than express tx`);
+    recorderLogger.success(
+      `  → normal tx landed ${normal.blockNumber - el.blockNumber} block(s) later than express tx`,
+    );
   } else if (el.blockNumber === normal.blockNumber && el.txIndex < normal.txIndex) {
-    recorderLogger.success(`  → both in same block; express tx is ordered first (idx ${el.txIndex} vs ${normal.txIndex})`);
+    recorderLogger.success(
+      `  → both in same block; express tx is ordered first (idx ${el.txIndex} vs ${normal.txIndex})`,
+    );
   } else {
-    recorderLogger.warn(`  → no visible ordering advantage this run (timing nondeterminism — repeat to see statistical pattern)`);
+    recorderLogger.warn(
+      `  → no visible ordering advantage this run (timing nondeterminism — repeat to see statistical pattern)`,
+    );
   }
 }
 
