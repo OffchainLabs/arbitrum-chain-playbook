@@ -1,11 +1,21 @@
 /**
- * ABI bundles needed by the Timeboost playbook. Loaded from the vendored JSON
- * artifacts under `./artifacts/`. We import via `createRequire` because
- * `import ... from '*.json'` is not stably supported across our Node target
- * (18 / 23) and ts-node's ESM loader.
+ * ABI bundles needed by the Timeboost playbook.
+ *
+ * No artifacts are vendored under this directory. Everything is imported
+ * straight from `node_modules`:
+ *   - ExpressLaneAuction (impl + events)  ← @arbitrum/nitro-contracts
+ *   - TransparentUpgradeableProxy + ProxyAdmin  ← @openzeppelin/contracts
+ *   - IERC20 (approve / transfer / balanceOf / ...)  ← @arbitrum/sdk
+ *
+ * The only hand-written fragment we still keep is the single-method `mint(address,uint256)`
+ * ABI for our compiled-on-the-fly MintableERC20 (see compileBidToken.ts) — IERC20 has no
+ * mint method, and pulling the full OpenZeppelin ERC20PresetMinterPauser ABI just for one
+ * function is gratuitous. The bidding-token consumers concatenate `IERC20.abi` with this
+ * fragment when they need to mint.
  */
 
 import { createRequire } from 'node:module';
+import { IERC20__factory } from '@arbitrum/sdk/dist/lib/abi/factories/IERC20__factory.js';
 import type { Abi, Hex } from 'viem';
 
 const require_ = createRequire(import.meta.url);
@@ -15,49 +25,29 @@ interface ArtifactJson {
   bytecode: Hex | string;
 }
 
-function loadArtifact(name: string): { abi: Abi; bytecode: Hex } {
-  const a = require_(`./artifacts/${name}.json`) as ArtifactJson;
+function loadArtifact(path: string): { abi: Abi; bytecode: Hex } {
+  const a = require_(path) as ArtifactJson;
   const bc = (a.bytecode ?? '') as string;
-  if (!bc.startsWith('0x')) throw new Error(`Artifact ${name}: bytecode missing 0x prefix`);
+  if (!bc.startsWith('0x')) throw new Error(`Artifact ${path}: bytecode missing 0x prefix`);
   return { abi: a.abi, bytecode: bc as Hex };
 }
 
-export const expressLaneAuctionArtifact = loadArtifact('ExpressLaneAuction');
-export const transparentProxyArtifact = loadArtifact('TransparentUpgradeableProxy');
-export const proxyAdminArtifact = loadArtifact('ProxyAdmin');
+export const expressLaneAuctionArtifact = loadArtifact(
+  '@arbitrum/nitro-contracts/build/contracts/src/express-lane-auction/ExpressLaneAuction.sol/ExpressLaneAuction.json',
+);
+export const transparentProxyArtifact = loadArtifact(
+  '@openzeppelin/contracts/build/contracts/TransparentUpgradeableProxy.json',
+);
+export const proxyAdminArtifact = loadArtifact('@openzeppelin/contracts/build/contracts/ProxyAdmin.json');
 
-/** Minimal ERC20 ABI used wherever we need to call approve / balanceOf / transfer. */
-export const erc20MinimalAbi = [
-  { type: 'function', name: 'name', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
-  { type: 'function', name: 'symbol', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
-  { type: 'function', name: 'decimals', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] },
-  {
-    type: 'function',
-    name: 'balanceOf',
-    stateMutability: 'view',
-    inputs: [{ name: 'account', type: 'address' }],
-    outputs: [{ type: 'uint256' }],
-  },
-  {
-    type: 'function',
-    name: 'approve',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'spender', type: 'address' },
-      { name: 'value', type: 'uint256' },
-    ],
-    outputs: [{ type: 'bool' }],
-  },
-  {
-    type: 'function',
-    name: 'transfer',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'to', type: 'address' },
-      { name: 'value', type: 'uint256' },
-    ],
-    outputs: [{ type: 'bool' }],
-  },
+/** Standard ERC20 surface (approve / transfer / balanceOf / allowance / transferFrom / totalSupply). */
+export const ierc20Abi = IERC20__factory.abi as unknown as Abi;
+
+/**
+ * Minimal `mint(address,uint256)` fragment for the playbook's MintableERC20.
+ * Combine with `ierc20Abi` when a consumer needs both standard ERC20 and mint.
+ */
+export const mintableErc20MintFragment = [
   {
     type: 'function',
     name: 'mint',
@@ -69,3 +59,6 @@ export const erc20MinimalAbi = [
     outputs: [],
   },
 ] as const satisfies Abi;
+
+/** Convenience: full bidding-token surface (IERC20 + mint). */
+export const biddingTokenAbi: Abi = [...ierc20Abi, ...mintableErc20MintFragment];

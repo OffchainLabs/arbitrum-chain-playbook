@@ -29,7 +29,7 @@ import {
   toHex,
 } from 'viem';
 import { sign as signRawHash, signatureToHex, privateKeyToAccount } from 'viem/accounts';
-import { erc20MinimalAbi, expressLaneAuctionArtifact } from './abis.js';
+import { ierc20Abi, expressLaneAuctionArtifact } from './abis.js';
 import { rawRpcCall, TimeboostRpcError } from './expressLaneRunner.js';
 
 let log = {
@@ -90,7 +90,7 @@ export async function approveAndDeposit(input: DepositInput): Promise<{ approveT
     bidder,
     biddingTokenAddress,
     encodeFunctionData({
-      abi: erc20MinimalAbi,
+      abi: ierc20Abi,
       functionName: 'approve',
       args: [auctionAddress, amount],
     }),

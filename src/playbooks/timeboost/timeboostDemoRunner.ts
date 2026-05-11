@@ -42,7 +42,7 @@ import { snapshotRound, formatRoundLine, waitUntilRound } from './roundClock.js'
 import { runExperimentPair } from './experimentRecorder.js';
 import { runUnauthorizedAttempt } from './unauthorizedTxRunner.js';
 import { generateReport } from './reportGenerator.js';
-import { erc20MinimalAbi } from './abis.js';
+import { biddingTokenAbi } from './abis.js';
 import type { AuctionEvent, ExperimentRecord, NoBidRoundRecord, UnauthorizedAttemptRecord } from './types.js';
 import { encodeFunctionData, type Address, type Hex } from 'viem';
 
@@ -545,7 +545,7 @@ async function generateAndFundDemoAccounts(input: FundInput): Promise<DemoAccoun
   const tokenAmount = 1_000_000n;
   for (const actor of [accounts.alice, accounts.bob]) {
     const data = encodeFunctionData({
-      abi: erc20MinimalAbi,
+      abi: biddingTokenAbi,
       functionName: 'mint',
       args: [actor.account.address, tokenAmount],
     });
@@ -620,7 +620,7 @@ async function ensureMainNode(
  * reliably responsive — it has to process delayed messages, set up the
  * staker, etc. The previous "sleep 8s" was insufficient on real Sepolia.
  */
-async function waitForChildRpcReady(url: string, timeoutMs = 90_000): Promise<void> {
+async function waitForChildRpcReady(url: string, timeoutMs = 180_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let lastErr = '';
   while (Date.now() < deadline) {
