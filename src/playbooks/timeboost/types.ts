@@ -1,16 +1,9 @@
 /**
- * Type definitions for the Timeboost Playbook.
- *
- * Scope: Phase 6 (express-lane runner + experiment recorder) and
- * Phase 7 (HTML report generation).
- *
- * Earlier phases (1-5) will extend this file with:
- *   - DeployedContracts (auction proxy, bidding token, proxy admin)
- *   - AuctionEvent / RoundSnapshot
- *   - TimeboostState (persistence)
+ * Type definitions for the Timeboost Playbook — shared across the experiment
+ * recorder, auction monitor, and HTML report.
  */
 
-import type { Address, Hex, Hash, Account, PublicClient, WalletClient } from 'viem';
+import type { Address, Hex, Hash } from 'viem';
 
 // =============================================================================
 // Express Lane submission (mirrors nitro/timeboost/types.go JsonExpressLaneSubmission)
@@ -25,18 +18,11 @@ export interface JsonExpressLaneSubmission {
   round: Hex;
   auctionContractAddress: Address;
   transaction: Hex;
-  options: ConditionalOptions | null;
+  // The demo never sets ConditionalOptions; nitro's contract allows the full
+  // arbitrum-types ConditionalOptions object here but we always send null.
+  options: null;
   sequenceNumber: Hex;
   signature: Hex;
-}
-
-/** arbitrum-types ConditionalOptions; we never set this in the demo, hence null is fine. */
-export interface ConditionalOptions {
-  knownAccounts?: Record<Address, Hex>;
-  blockNumberMin?: Hex;
-  blockNumberMax?: Hex;
-  timestampMin?: Hex;
-  timestampMax?: Hex;
 }
 
 /**
@@ -142,29 +128,4 @@ export interface ReportData {
   unauthorized: UnauthorizedAttemptRecord[];
   events: AuctionEvent[];
   summary: ReportSummary;
-}
-
-// =============================================================================
-// Runner inputs (shared)
-// =============================================================================
-
-/**
- * Shared context the Phase 6 runners need.
- * Earlier phases construct this from ChainEnv + persisted Timeboost state.
- */
-export interface TimeboostRuntime {
-  chainId: number;
-  childClient: PublicClient;
-  childWalletForController: WalletClient;
-  controllerAccount: Account;
-  /** Throwaway "Dave"-like account for the parallel normal tx. */
-  normalSenderClient: WalletClient;
-  normalSenderAccount: Account;
-  /** Non-controller account for the unauthorized-attempt demo. */
-  unauthorizedClient: WalletClient;
-  unauthorizedAccount: Account;
-  /** ExpressLaneAuction proxy address (deployed in Phase 2). */
-  auctionContractAddress: Address;
-  /** sequencer HTTP RPC URL; same endpoint that exposes timeboost_sendExpressLaneTransaction. */
-  sequencerRpcUrl: string;
 }

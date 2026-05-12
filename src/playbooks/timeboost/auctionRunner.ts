@@ -17,16 +17,12 @@ import { approveAndDeposit, submitBid, type SubmittedBid } from './bidder.js';
 import { snapshotRound, formatRoundLine, waitUntilRound, type RoundTiming } from './roundClock.js';
 import type { AuctionEvent } from './types.js';
 
-let log = {
+const log = {
   info: (m: string) => console.log('ℹ', m),
   warn: (m: string) => console.log('⚠', m),
   success: (m: string) => console.log('✔', m),
   section: (m: string) => console.log('\n▸', m, '\n'),
 };
-
-export function setAuctionRunnerLogger(l: typeof log): void {
-  log = l;
-}
 
 export interface RunOneAuctionInput {
   publicClient: PublicClient;

@@ -12,19 +12,15 @@
  * for the HTML report.
  */
 
-import { type Address, type Hash, type PublicClient, decodeEventLog, parseAbi } from 'viem';
+import { type Address, type Hash, type PublicClient, decodeEventLog } from 'viem';
 import { expressLaneAuctionArtifact } from './abis.js';
 import type { AuctionEvent } from './types.js';
 
-let log = {
+const log = {
   info: (m: string) => console.log('ℹ', m),
   warn: (m: string) => console.log('⚠', m),
   event: (m: string) => console.log('•', m),
 };
-
-export function setAuctionMonitorLogger(l: typeof log): void {
-  log = l;
-}
 
 export interface AuctionMonitorHandle {
   events: AuctionEvent[];
@@ -142,6 +138,3 @@ function jsonReplacer(_key: string, v: unknown): unknown {
   if (typeof v === 'bigint') return v.toString();
   return v;
 }
-
-// Suppress unused-import warning for parseAbi (kept available for future use).
-void parseAbi;

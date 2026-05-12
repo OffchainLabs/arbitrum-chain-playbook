@@ -14,7 +14,7 @@ import { type Address, type Hash, type Hex, type LocalAccount, type PublicClient
 import { submitExpressLaneTransaction, type ExpressLaneSubmitInput, type RunnerLogger } from './expressLaneRunner.js';
 import type { ExperimentRecord, TxObservation } from './types.js';
 
-let recorderLogger: RunnerLogger & {
+const recorderLogger: RunnerLogger & {
   section: (m: string) => void;
   raw: (m: string) => void;
   success: (m: string) => void;
@@ -26,10 +26,6 @@ let recorderLogger: RunnerLogger & {
   raw: (m) => console.log(m),
   success: (m) => console.log('✔', m),
 };
-
-export function setRecorderLogger(l: typeof recorderLogger): void {
-  recorderLogger = l;
-}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -118,19 +114,20 @@ export async function runExperimentPair(input: RunExperimentInput): Promise<Expe
 }
 
 // ---------------------------------------------------------------------------
-// Internals — normal tx submission
+// Normal tx submission (exported so the no-bid round demo can reuse it
+// instead of hand-rolling the same nonce/gas/sign/send dance)
 // ---------------------------------------------------------------------------
 
-interface SubmitNormalTxInput extends NormalTxInput {
+export interface SubmitNormalTxInput extends NormalTxInput {
   label: string;
 }
 
-interface SubmitNormalTxResult {
+export interface SubmitNormalTxResult {
   txHash: Hash;
   sentAtMs: number;
 }
 
-async function submitNormalTx(input: SubmitNormalTxInput): Promise<SubmitNormalTxResult> {
+export async function submitNormalTx(input: SubmitNormalTxInput): Promise<SubmitNormalTxResult> {
   const { senderAccount, childClient, chainId, to, valueEth = '0', label } = input;
 
   const nonce = await childClient.getTransactionCount({
@@ -160,10 +157,10 @@ async function submitNormalTx(input: SubmitNormalTxInput): Promise<SubmitNormalT
 }
 
 // ---------------------------------------------------------------------------
-// Internals — receipt polling + timeboosted extraction
+// Receipt polling + timeboosted extraction (exported for the no-bid round path)
 // ---------------------------------------------------------------------------
 
-interface CompleteObservationInput {
+export interface CompleteObservationInput {
   lane: TxObservation['lane'];
   childClient: PublicClient;
   txHash: Hash;
@@ -173,7 +170,7 @@ interface CompleteObservationInput {
   timeoutMs: number;
 }
 
-async function completeObservation(input: CompleteObservationInput): Promise<TxObservation> {
+export async function completeObservation(input: CompleteObservationInput): Promise<TxObservation> {
   const { childClient, txHash, sentAtMs, sender, lane, round, timeoutMs } = input;
 
   // Use a tighter poll than the default — we want a wall-clock-accurate

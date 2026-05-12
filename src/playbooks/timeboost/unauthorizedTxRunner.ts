@@ -11,16 +11,12 @@ import { type Address, type LocalAccount, type PublicClient } from 'viem';
 import { submitExpressLaneTransaction, TimeboostRpcError } from './expressLaneRunner.js';
 import type { UnauthorizedAttemptRecord } from './types.js';
 
-let log = {
+const log = {
   section: (m: string) => console.log('\n▸', m, '\n'),
   info: (m: string) => console.log('ℹ', m),
   warn: (m: string) => console.log('⚠', m),
   success: (m: string) => console.log('✔', m),
 };
-
-export function setUnauthorizedRunnerLogger(l: typeof log): void {
-  log = l;
-}
 
 const SENTINEL = 'NOT_EXPRESS_LANE_CONTROLLER';
 

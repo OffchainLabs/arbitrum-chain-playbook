@@ -17,16 +17,13 @@ import {
   parseEther,
   toHex,
 } from 'viem';
-import { DONT_CARE_SEQUENCE, type JsonExpressLaneSubmission, type TxObservation } from './types.js';
+import { DONT_CARE_SEQUENCE, type JsonExpressLaneSubmission } from './types.js';
 import { signExpressLaneSubmission } from './expressLaneSigner.js';
 
 /**
  * Minimal logger surface so Phase 6 modules don't have to import the
  * playbook-wide logger.ts (which transitively pulls in `ora` →
  * `cli-spinners` and breaks on Node < 20.10 due to import attributes).
- *
- * Default is a `console.log`-backed no-op-ish sink. Production callers can
- * pass the real logger via `setRunnerLogger()`.
  */
 export interface RunnerLogger {
   event: (msg: string) => void;
@@ -34,15 +31,11 @@ export interface RunnerLogger {
   warn: (msg: string) => void;
 }
 
-let activeLogger: RunnerLogger = {
+const activeLogger: RunnerLogger = {
   event: (m) => console.log('•', m),
   info: (m) => console.log('ℹ', m),
   warn: (m) => console.log('⚠', m),
 };
-
-export function setRunnerLogger(l: RunnerLogger): void {
-  activeLogger = l;
-}
 
 export interface ExpressLaneSubmitInput {
   /** Controller account (must be a LocalAccount<string>; needs to deterministically sign tx + envelope). */
@@ -143,24 +136,6 @@ export async function submitExpressLaneTransaction(input: ExpressLaneSubmitInput
   activeLogger.event(`[${label}] express-lane tx submitted: ${txHash} (round=${round}, seq=${sequenceNumber})`);
 
   return { txHash, sentAtMs, rlpTx, submission };
-}
-
-/**
- * Convenience: yield the partial TxObservation that the experiment recorder
- * will later complete with on-chain receipt fields.
- */
-export function partialObservationForExpressLane(
-  result: ExpressLaneSubmitResult,
-  controllerAddress: Address,
-  round: number,
-): Pick<TxObservation, 'lane' | 'sentAtMs' | 'txHash' | 'sender' | 'round'> {
-  return {
-    lane: 'express',
-    sentAtMs: result.sentAtMs,
-    txHash: result.txHash,
-    sender: controllerAddress,
-    round,
-  };
 }
 
 // ---------------------------------------------------------------------------

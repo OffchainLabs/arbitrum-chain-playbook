@@ -29,15 +29,11 @@ const REDIS_HOST_PORT = 6379;
 export const BID_VALIDATOR_HOST_PORT = 9372;
 const AUCTIONEER_HTTP_HOST_PORT = 9373; // not strictly required; helpful for poking
 
-let log = {
+const log = {
   info: (m: string) => console.log('ℹ', m),
   warn: (m: string) => console.log('⚠', m),
   success: (m: string) => console.log('✔', m),
 };
-
-export function setServiceManagerLogger(l: typeof log): void {
-  log = l;
-}
 
 // ---------------------------------------------------------------------------
 // Public types

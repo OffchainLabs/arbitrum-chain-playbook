@@ -29,7 +29,7 @@ import { StepTracker } from '../../utils/ui.js';
 
 import { deployChain } from '../../core/deployChain/deployChain.js';
 import { getParentChain } from '../../utils/parentChain.js';
-import { deployContracts, currentRoundFor, type DeployedContracts } from './deployContracts.js';
+import { deployContracts, type DeployedContracts } from './deployContracts.js';
 import { startTimeboostServices, stopTimeboostServices, BID_VALIDATOR_HOST_PORT } from './serviceManager.js';
 import {
   patchSequencerConfigForPreFlight,
@@ -39,7 +39,7 @@ import {
 import { startAuctionMonitor } from './auctionMonitor.js';
 import { runOneAuction } from './auctionRunner.js';
 import { snapshotRound, formatRoundLine, waitUntilRound } from './roundClock.js';
-import { runExperimentPair } from './experimentRecorder.js';
+import { runExperimentPair, submitNormalTx, completeObservation } from './experimentRecorder.js';
 import { runUnauthorizedAttempt } from './unauthorizedTxRunner.js';
 import { generateReport } from './reportGenerator.js';
 import { biddingTokenAbi } from './abis.js';
@@ -160,11 +160,6 @@ export async function runFullTimeboostDemo(ctx?: OperationContext): Promise<Time
 
   const deployerSender = firstRegular(sendersEnv);
   const deployer = privateKeyToAccount(deployerSender.privateKey);
-  const deployerWallet = createWalletClient({
-    account: deployer,
-    chain: childChain,
-    transport: http(sequencerHttpUrl),
-  });
 
   await topUpDeployerOnL2({ chainEnv, deployer, childPublic });
   ctx?.stepCompleted('Top up deployer balance on L2');
@@ -182,7 +177,6 @@ export async function runFullTimeboostDemo(ctx?: OperationContext): Promise<Time
   const deployed = await deployContracts({
     deployer,
     publicClient: childPublic,
-    walletClient: deployerWallet,
     auctioneer: auctioneer.address,
     beneficiary: deployer.address, // demo: send proceeds back to deployer
   });
@@ -368,47 +362,27 @@ export async function runFullTimeboostDemo(ctx?: OperationContext): Promise<Time
   const noBidRound = snapshotRound(timing).current + 1;
   await waitUntilRound(timing, noBidRound);
   await sleep(500);
-  const noBidObs = [] as NoBidRoundRecord['observations'];
   // Just send one normal tx (no controller exists this round, so EL would be rejected).
-  const nonce = await restartedClient.getTransactionCount({
-    address: accounts.dave.account.address,
-    blockTag: 'pending',
-  });
-  const gasPrice = await restartedClient.getGasPrice();
-  const signed = (await accounts.dave.account.signTransaction({
+  const noBidStartedAtMs = Date.now();
+  const submission = await submitNormalTx({
+    senderAccount: accounts.dave.account,
+    childClient: restartedClient,
     chainId,
-    type: 'eip1559',
     to: accounts.alice.account.address,
-    value: 0n,
-    data: '0x',
-    gas: 100_000n,
-    maxFeePerGas: gasPrice * 2n,
-    maxPriorityFeePerGas: gasPrice,
-    nonce,
-  })) as Hex;
-  const sentAtMs = Date.now();
-  const txHash = await restartedClient.sendRawTransaction({ serializedTransaction: signed });
-  const receipt = await restartedClient.waitForTransactionReceipt({ hash: txHash, pollingInterval: 50 });
-  const receiptAtMs = Date.now();
-  const block = await restartedClient.getBlock({ blockNumber: receipt.blockNumber });
-  const rawReceipt = (await restartedClient.transport.request({
-    method: 'eth_getTransactionReceipt',
-    params: [txHash],
-  })) as Record<string, unknown> | null;
-  noBidObs.push({
+    label: 'no-bid',
+  });
+  const observation = await completeObservation({
     lane: 'normal',
-    sentAtMs,
-    receiptAtMs,
-    txHash,
-    blockNumber: receipt.blockNumber,
-    blockTimestampSec: block.timestamp,
-    txIndex: receipt.transactionIndex,
-    timeboosted: typeof rawReceipt?.timeboosted === 'boolean' ? rawReceipt.timeboosted : null,
+    childClient: restartedClient,
+    txHash: submission.txHash,
+    sentAtMs: submission.sentAtMs,
     sender: accounts.dave.account.address,
     round: noBidRound,
+    timeoutMs: 30_000,
   });
-
-  const noBidRounds: NoBidRoundRecord[] = [{ round: noBidRound, startedAtMs: Date.now(), observations: noBidObs }];
+  const noBidRounds: NoBidRoundRecord[] = [
+    { round: noBidRound, startedAtMs: noBidStartedAtMs, observations: [observation] },
+  ];
   ctx?.stepCompleted('No-bid round (control)');
 
   // -------------------------------------------------------------------------
@@ -516,11 +490,14 @@ async function generateAndFundDemoAccounts(input: FundInput): Promise<DemoAccoun
   // Fund each demo account with native ETH for gas.
   const ethEach = parseEther('0.05');
   for (const [name, actor] of Object.entries(accounts) as [keyof DemoAccounts, DemoActor][]) {
-    await sendNativeEth(input.publicClient, input.deployer, actor.account.address, ethEach);
+    await signAndSend(input.publicClient, input.deployer, { to: actor.account.address, value: ethEach });
     logger.info(`funded ${name} (${actor.account.address}) with ${formatEther(ethEach)} ETH`);
   }
   // Auctioneer hot wallet needs ETH to send resolve* txs.
-  await sendNativeEth(input.publicClient, input.deployer, input.auctioneerToFund, parseEther('0.1'));
+  await signAndSend(input.publicClient, input.deployer, {
+    to: input.auctioneerToFund,
+    value: parseEther('0.1'),
+  });
 
   // Mint bidding tokens to Alice & Bob.
   const tokenAmount = 1_000_000n;
@@ -530,17 +507,16 @@ async function generateAndFundDemoAccounts(input: FundInput): Promise<DemoAccoun
       functionName: 'mint',
       args: [actor.account.address, tokenAmount],
     });
-    await sendCall(input.publicClient, input.deployer, input.biddingToken, data);
+    await signAndSend(input.publicClient, input.deployer, { to: input.biddingToken, data, gas: 300_000n });
   }
 
   return accounts;
 }
 
-async function sendNativeEth(
+async function signAndSend(
   pub: ReturnType<typeof createPublicClient>,
   signer: ReturnType<typeof privateKeyToAccount>,
-  to: Address,
-  value: bigint,
+  args: { to: Address; value?: bigint; data?: Hex; gas?: bigint },
 ): Promise<void> {
   const nonce = await pub.getTransactionCount({ address: signer.address, blockTag: 'pending' });
   const gasPrice = await pub.getGasPrice();
@@ -548,34 +524,10 @@ async function sendNativeEth(
   const signed = (await signer.signTransaction({
     chainId,
     type: 'eip1559',
-    to,
-    value,
-    data: '0x',
-    gas: 100_000n,
-    maxFeePerGas: gasPrice * 2n,
-    maxPriorityFeePerGas: gasPrice,
-    nonce,
-  })) as Hex;
-  const txHash = await pub.sendRawTransaction({ serializedTransaction: signed });
-  await pub.waitForTransactionReceipt({ hash: txHash });
-}
-
-async function sendCall(
-  pub: ReturnType<typeof createPublicClient>,
-  signer: ReturnType<typeof privateKeyToAccount>,
-  to: Address,
-  data: Hex,
-): Promise<void> {
-  const nonce = await pub.getTransactionCount({ address: signer.address, blockTag: 'pending' });
-  const gasPrice = await pub.getGasPrice();
-  const chainId = await pub.getChainId();
-  const signed = (await signer.signTransaction({
-    chainId,
-    type: 'eip1559',
-    to,
-    value: 0n,
-    data,
-    gas: 300_000n,
+    to: args.to,
+    value: args.value ?? 0n,
+    data: args.data ?? '0x',
+    gas: args.gas ?? 100_000n,
     maxFeePerGas: gasPrice * 2n,
     maxPriorityFeePerGas: gasPrice,
     nonce,

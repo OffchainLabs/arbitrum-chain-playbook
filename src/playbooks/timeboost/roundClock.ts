@@ -73,13 +73,3 @@ export async function waitUntilRound(timing: RoundTiming, target: number, signal
     await new Promise((r) => setTimeout(r, sleepMs));
   }
 }
-
-/**
- * Wait until the next round transitions and return the new round number.
- * Convenience for the demo runner's "watch round transitions" step.
- */
-export async function waitForNextRound(timing: RoundTiming, signal?: AbortSignal): Promise<number> {
-  const start = snapshotRound(timing).current;
-  await waitUntilRound(timing, start + 1, signal);
-  return start + 1;
-}

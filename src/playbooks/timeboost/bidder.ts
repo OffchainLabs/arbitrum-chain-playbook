@@ -24,7 +24,6 @@ import {
   encodeAbiParameters,
   encodeFunctionData,
   keccak256,
-  pad,
   toBytes,
   toHex,
 } from 'viem';
@@ -32,15 +31,11 @@ import { sign as signRawHash, signatureToHex, privateKeyToAccount } from 'viem/a
 import { ierc20Abi, expressLaneAuctionArtifact } from './abis.js';
 import { rawRpcCall, TimeboostRpcError } from './expressLaneRunner.js';
 
-let log = {
+const log = {
   info: (m: string) => console.log('ℹ', m),
   warn: (m: string) => console.log('⚠', m),
   success: (m: string) => console.log('✔', m),
 };
-
-export function setBidderLogger(l: typeof log): void {
-  log = l;
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -248,7 +243,3 @@ async function sendCall(
   if (receipt.status !== 'success') throw new Error(`Tx ${txHash} reverted`);
   return txHash;
 }
-
-// Suppress unused-import warning for `pad` — exported as part of viem's API
-// surface that we may need in tests.
-void pad;

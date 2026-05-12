@@ -18,8 +18,6 @@ import {
   type Hex,
   type LocalAccount,
   type PublicClient,
-  type WalletClient,
-  encodeAbiParameters,
   encodeDeployData,
   encodeFunctionData,
 } from 'viem';
@@ -43,19 +41,11 @@ export const DEFAULT_DEMO_TIMING: RoundTimingConfig = {
   reserveSubmissionSeconds: 3,
 };
 
-/** Closer-to-production timing matching the docs example. */
-export const DOCS_DEFAULT_TIMING: RoundTimingConfig = {
-  roundDurationSeconds: 60,
-  auctionClosingSeconds: 15,
-  reserveSubmissionSeconds: 15,
-};
-
 export interface DeployContractsInput {
   /** Deployer (must hold child chain ETH for gas). */
   deployer: LocalAccount<string>;
-  /** Both clients for the child chain. */
+  /** Public client for the child chain (used to read nonce/gas + submit signed txs). */
   publicClient: PublicClient;
-  walletClient: WalletClient;
   /** Address that will resolve auctions and hold AUCTIONEER_ROLE. */
   auctioneer: Address;
   /** Address that receives auction proceeds when `flushBeneficiaryBalance()` is called. */
@@ -287,26 +277,3 @@ function roundOffsetForRoundDuration(roundDurationSeconds: number): number {
   const nowSec = Math.floor(Date.now() / 1000);
   return Math.floor(nowSec / roundDurationSeconds) * roundDurationSeconds;
 }
-
-// ---------------------------------------------------------------------------
-// Convenience: compute current round client-side from the deployed config.
-// Mirrors nitro/timeboost/roundtiminginfo.go.
-// ---------------------------------------------------------------------------
-
-export function currentRoundFor(
-  deployed: Pick<DeployedContracts, 'initialOffsetTimestamp' | 'timing'>,
-  nowSec?: number,
-): number {
-  const t = nowSec ?? Math.floor(Date.now() / 1000);
-  return Math.floor((t - deployed.initialOffsetTimestamp) / deployed.timing.roundDurationSeconds);
-}
-
-export function roundStartTimestamp(
-  deployed: Pick<DeployedContracts, 'initialOffsetTimestamp' | 'timing'>,
-  round: number,
-): number {
-  return deployed.initialOffsetTimestamp + round * deployed.timing.roundDurationSeconds;
-}
-
-/** Suppress unused-import warning (we may need encodeAbiParameters in tests later). */
-void encodeAbiParameters;

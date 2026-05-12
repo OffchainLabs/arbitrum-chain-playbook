@@ -26,7 +26,6 @@ import {
   numberToBytes,
   pad,
   toBytes,
-  toHex,
 } from 'viem';
 
 const TIMEBOOST_DOMAIN_LABEL = 'TIMEBOOST_BID';
@@ -92,12 +91,4 @@ export async function signExpressLaneSubmission(account: Account, input: BuildSu
   }
 
   return local.signMessage({ message: { raw: messageBytes } });
-}
-
-/**
- * Convenience: convert a bigint to its standard hex representation
- * compatible with the sequencer's `hexutil.Big` / `hexutil.Uint64` decoders.
- */
-export function bigintToRpcHex(value: bigint): Hex {
-  return toHex(value);
 }
