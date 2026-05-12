@@ -81,49 +81,36 @@ export async function runFullTimeboostDemo(ctx?: OperationContext): Promise<Time
   ctx?.onCleanup(async () => tracker.fail('Cancelled'));
 
   // -------------------------------------------------------------------------
-  // 0. Chain deploy (skip if already loaded — set TIMEBOOST_FORCE_REDEPLOY=1
-  //    in env to always redeploy regardless of state)
+  // 0. Chain deploy — this command is declared `redeploysChain: true`, so
+  //    always tear down leftover state and deploy a fresh chain. Reusing a
+  //    persisted node-config.json is intentionally not supported: load()
+  //    drops coreContracts (so the L1->L2 top-up below would fail with
+  //    "inbox address not available"), and a stale
+  //    `execution.sequencer.timeboost` block from a previous run would
+  //    point the first sequencer start at an expired auction contract.
   // -------------------------------------------------------------------------
   ctx?.throwIfCancelled();
   ctx?.stepStarted('Deploy fresh Orbit chain');
   tracker.start();
 
-  const forceRedeploy = process.env.TIMEBOOST_FORCE_REDEPLOY === '1';
-
-  // Try loading any persisted chain from disk first (node-config.json) so we
-  // can reuse it across iterations without needing CHAIN_DEPLOYMENT_TRANSACTION_HASH
-  // in .env. Caller can still force a fresh deploy via TIMEBOOST_FORCE_REDEPLOY=1.
-  if (!chainEnv.status.isInitiated() && !forceRedeploy) {
-    if (chainEnv.load()) {
-      // Discover any sequencer container still running from a prior iteration
-      // so we don't try to start a duplicate one.
-      await chainEnv.nodeManager?.discoverExistingContainers();
+  if (chainEnv.nodeManager) {
+    const running = chainEnv.nodeManager.getRunningNodes();
+    if (running.length > 0) {
+      logger.info(`stopping ${running.length} leftover node(s)...`);
+      await chainEnv.nodeManager.stopAllNodes();
     }
   }
-
-  if (chainEnv.status.isInitiated() && !forceRedeploy) {
-    logger.info(`reusing already-loaded chain (chainId=${chainEnv.chainConfig.getChainId()})`);
-  } else {
-    // Stop and clear any leftover chain state.
-    if (chainEnv.nodeManager) {
-      const running = chainEnv.nodeManager.getRunningNodes();
-      if (running.length > 0) {
-        logger.info(`stopping ${running.length} leftover node(s)...`);
-        await chainEnv.nodeManager.stopAllNodes();
-      }
-    }
-    if (chainEnv.status.isInitiated()) {
-      chainEnv.reset();
-    }
-
-    const parentChain = getParentChain();
-    const ok = await deployChain(parentChain, ctx, { skipPrompts: true });
-    if (!ok) throw new Error('Chain deployment failed (check parent chain RPC + funded MAIN_PRIVATE_KEY).');
-    if (!chainEnv.status.isInitiated()) {
-      if (!chainEnv.load()) throw new Error('Chain deploy succeeded but ChainEnv could not be loaded.');
-    }
-    logger.success('Fresh chain deployed.');
+  if (chainEnv.status.isInitiated()) {
+    chainEnv.reset();
   }
+
+  const parentChain = getParentChain();
+  const ok = await deployChain(parentChain, ctx, { skipPrompts: true });
+  if (!ok) throw new Error('Chain deployment failed (check parent chain RPC + funded MAIN_PRIVATE_KEY).');
+  if (!chainEnv.status.isInitiated()) {
+    if (!chainEnv.load()) throw new Error('Chain deploy succeeded but ChainEnv could not be loaded.');
+  }
+  logger.success('Fresh chain deployed.');
   ctx?.stepCompleted('Deploy fresh Orbit chain');
 
   const chainId = chainEnv.chainConfig.getChainId();
@@ -143,15 +130,9 @@ export async function runFullTimeboostDemo(ctx?: OperationContext): Promise<Time
   ctx?.stepStarted('Bring up sequencer');
   tracker.start();
   patchSequencerConfigForPreFlight();
-  // Wipe stale local DB ONLY when no MAIN sequencer is currently running.
-  // If a sequencer from a previous iteration is alive, its DB is in active
-  // use and matches on-chain state — wiping would corrupt it.
-  const existingMain = nodeManager.getRunningNodes().find((n) => n.config.nodeType === NodeType.MAIN);
-  if (!existingMain) {
-    wipeLocalChainData(chainId);
-  } else {
-    logger.info('reusing already-running sequencer; skipping local DB wipe');
-  }
+  // Always-fresh deploy: no sequencer can be alive for this new chainId, so
+  // unconditionally wipe any leftover local DB at this path.
+  wipeLocalChainData(chainId);
   logger.info('node-config patched: block-validator off, bold strategy cleared, track-block-metadata-from=1');
   const main = await ensureMainNode(nodeManager);
   const sequencerHttpUrl = `http://localhost:${main.config.httpPort}`;

@@ -40,6 +40,7 @@ export function patchSequencerConfigForPreFlight(
   const cfg = readJson(configPath);
   applyValidationSkip(cfg);
   applyTrackBlockMetadata(cfg);
+  clearStaleTimeboostBlock(cfg);
   writeJson(configPath, cfg);
 }
 
@@ -104,6 +105,22 @@ function applyTrackBlockMetadata(cfg: Record<string, unknown>): void {
   const node = (cfg.node ??= {}) as Record<string, unknown>;
   const txStreamer = (node['transaction-streamer'] ??= {}) as Record<string, unknown>;
   txStreamer['track-block-metadata-from'] = 1;
+}
+
+/**
+ * Drop any pre-existing `execution.sequencer.timeboost` block. Defense-in-depth
+ * for the pre-flight sequencer start: if the auction address from a prior run
+ * leaked into node-config.json, leaving it in place would point the first
+ * sequencer container at an expired auction contract until step 5 rewrites it.
+ * After a deployChain step the config is fresh and has no timeboost block, so
+ * this is a no-op on the happy path.
+ */
+function clearStaleTimeboostBlock(cfg: Record<string, unknown>): void {
+  const execution = cfg.execution as Record<string, unknown> | undefined;
+  const sequencer = execution?.sequencer as Record<string, unknown> | undefined;
+  if (sequencer && 'timeboost' in sequencer) {
+    delete sequencer.timeboost;
+  }
 }
 
 function ensureApiNamespaces(cfg: Record<string, unknown>, key: 'http' | 'ws'): void {
