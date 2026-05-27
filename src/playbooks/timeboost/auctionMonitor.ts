@@ -118,7 +118,10 @@ function describeEvent(name: string, args: Record<string, unknown>): string {
   if (name === 'AuctionResolved') {
     const round = args.round ?? args._round ?? '?';
     const winner = args.firstPriceBidder ?? args.winner ?? args.expressLaneController ?? '?';
-    const second = args.secondPriceAmount ?? args.amount ?? '?';
+    // The actual second-price (what the winner pays) is emitted as `price`.
+    // `firstPriceAmount` is the winner's own bid; keep the other names as
+    // forward-compat fallbacks in case nitro-contracts renames the field.
+    const second = args.price ?? args.secondPriceAmount ?? args.amount ?? '?';
     return `round=${round} winner=${winner} secondPrice=${second}`;
   }
   if (name === 'SetExpressLaneController') {

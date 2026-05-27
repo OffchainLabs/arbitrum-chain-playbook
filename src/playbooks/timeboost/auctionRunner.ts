@@ -3,10 +3,17 @@
  *
  * Choreography per round:
  *   1. wait until we're in the bidding window (NOT in the auction-closed window)
- *   2. Alice + Bob each `submitBid()` for round N+1 with controller=Carol
+ *   2. Alice + Bob each `submitBid()` for round N+1, naming DIFFERENT express
+ *      lane controllers. This matters: the auctioneer's bid cache is keyed by
+ *      `expressLaneController` (nitro/timeboost/bid_cache.go:27), so two bids
+ *      naming the *same* controller would overwrite each other → only one bid
+ *      survives → single-bid resolution at the reserve price. Distinct
+ *      controllers keep both bids → multi-bid resolution at the second price.
+ *      Bob (higher bid) names the winner controller (Carol); Alice names herself.
  *   3. (auctioneer-server runs the resolution at T-auctionClosingSeconds)
  *   4. wait until round N+1 starts; assert via auctionMonitor that
- *      AuctionResolved + SetExpressLaneController fired with controller=Carol
+ *      AuctionResolved (two bids, second price) + SetExpressLaneController
+ *      (controller=Carol) fired.
  *
  * Returns metadata each round so the demo runner can record it.
  */
@@ -34,7 +41,12 @@ export interface RunOneAuctionInput {
   // Bidders (passed as private keys so the bidder can do raw-hash sign of Bid)
   aliceKey: Hex;
   bobKey: Hex;
-  controller: Address; // Carol
+  // Express lane controllers named in each bid. MUST be distinct (see header
+  // comment) or the auctioneer collapses both bids into a single-bid auction.
+  // Bob is the higher bidder, so `winnerController` is the address that ends up
+  // controlling the express lane for the round.
+  winnerController: Address; // named by Bob (the winning bid) — e.g. Carol
+  loserController: Address; // named by Alice (the losing bid) — e.g. Alice herself
 
   // Bid amounts (units = bidding token wei). Bob bids higher → wins.
   aliceBidAmount: bigint;
@@ -103,7 +115,7 @@ export async function runOneAuction(input: RunOneAuctionInput, events: AuctionEv
       auctionAddress: input.auctionAddress,
       bidValidatorUrl: input.bidValidatorUrl,
       round: bidForRound,
-      expressLaneController: input.controller,
+      expressLaneController: input.loserController,
       amount: input.aliceBidAmount,
     }),
   );
@@ -114,7 +126,7 @@ export async function runOneAuction(input: RunOneAuctionInput, events: AuctionEv
       auctionAddress: input.auctionAddress,
       bidValidatorUrl: input.bidValidatorUrl,
       round: bidForRound,
-      expressLaneController: input.controller,
+      expressLaneController: input.winnerController,
       amount: input.bobBidAmount,
     }),
   );

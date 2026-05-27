@@ -278,7 +278,10 @@ export async function runFullTimeboostDemo(ctx?: OperationContext): Promise<Time
         timing,
         aliceKey: accounts.alice.privateKey,
         bobKey: accounts.bob.privateKey,
-        controller: accounts.carol.account.address,
+        // Distinct controllers so the auctioneer keeps BOTH bids (multi-bid →
+        // second-price resolution). Bob wins, so Carol controls the express lane.
+        winnerController: accounts.carol.account.address,
+        loserController: accounts.alice.account.address,
         aliceBidAmount: parseUnits('100', 0),
         bobBidAmount: parseUnits('250', 0),
         aliceNeedsDeposit: i === 0,
@@ -362,27 +365,39 @@ export async function runFullTimeboostDemo(ctx?: OperationContext): Promise<Time
   const noBidRound = snapshotRound(timing).current + 1;
   await waitUntilRound(timing, noBidRound);
   await sleep(500);
-  // Just send one normal tx (no controller exists this round, so EL would be rejected).
+
+  // Fire TWO normal txs in parallel. There's no controller this round, so the
+  // 200ms penalty applies to nobody — both should come back timeboosted=false
+  // with near-identical low latency (no ordering advantage), the exact opposite
+  // of the winning-round experiment. (An express-lane tx isn't sent here: with
+  // no controller it would just be rejected.)
   const noBidStartedAtMs = Date.now();
-  const submission = await submitNormalTx({
-    senderAccount: accounts.dave.account,
-    childClient: restartedClient,
-    chainId,
-    to: accounts.alice.account.address,
-    label: 'no-bid',
-  });
-  const observation = await completeObservation({
-    lane: 'normal',
-    childClient: restartedClient,
-    txHash: submission.txHash,
-    sentAtMs: submission.sentAtMs,
-    sender: accounts.dave.account.address,
-    round: noBidRound,
-    timeoutMs: 30_000,
-  });
-  const noBidRounds: NoBidRoundRecord[] = [
-    { round: noBidRound, startedAtMs: noBidStartedAtMs, observations: [observation] },
-  ];
+  const observeNoBidTx = async (
+    from: ReturnType<typeof privateKeyToAccount>,
+    to: Address,
+  ): Promise<NoBidRoundRecord['observations'][number]> => {
+    const sub = await submitNormalTx({
+      senderAccount: from,
+      childClient: restartedClient,
+      chainId,
+      to,
+      label: 'no-bid',
+    });
+    return completeObservation({
+      lane: 'normal',
+      childClient: restartedClient,
+      txHash: sub.txHash,
+      sentAtMs: sub.sentAtMs,
+      sender: from.address,
+      round: noBidRound,
+      timeoutMs: 30_000,
+    });
+  };
+  const observations = await Promise.all([
+    observeNoBidTx(accounts.dave.account, accounts.alice.account.address),
+    observeNoBidTx(accounts.alice.account, accounts.dave.account.address),
+  ]);
+  const noBidRounds: NoBidRoundRecord[] = [{ round: noBidRound, startedAtMs: noBidStartedAtMs, observations }];
   ctx?.stepCompleted('No-bid round (control)');
 
   // -------------------------------------------------------------------------
