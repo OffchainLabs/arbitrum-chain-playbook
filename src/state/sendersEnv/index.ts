@@ -7,7 +7,8 @@
 
 import { privateKeyToAccount } from 'viem/accounts';
 import { sanitizePrivateKey } from '@arbitrum/chain-sdk/utils';
-import { SenderAccount, SenderRole } from './types.js';
+import { SenderRole } from './types.js';
+import type { SenderAccount } from './types.js';
 
 /**
  * SendersEnv Singleton Class
@@ -126,6 +127,7 @@ export class SendersEnv {
 export const getSendersEnv = (): SendersEnv => SendersEnv.getInstance();
 
 // Re-export types
-export { SenderRole, SenderAccount } from './types.js';
+export { SenderRole } from './types.js';
+export type { SenderAccount } from './types.js';
 
 export default SendersEnv;

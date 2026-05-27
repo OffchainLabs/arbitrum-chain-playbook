@@ -19,3 +19,4 @@ data/
 
 # Docker node data
 .arbitrum/
+.claude/

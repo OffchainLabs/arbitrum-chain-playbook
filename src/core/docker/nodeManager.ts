@@ -324,7 +324,10 @@ export class NodeManager {
   /**
    * Start a node of the specified type
    */
-  async startNode(type: NodeType, options?: { dockerImage?: string }): Promise<NodeInstance | null> {
+  async startNode(
+    type: NodeType,
+    options?: { dockerImage?: string; extraDockerArgs?: string[] },
+  ): Promise<NodeInstance | null> {
     if (!this.chainEnv.status.isInitiated()) {
       logger.errorWithFix('No chain detected.', 'Deploy a chain first from Main Menu > Deploy Chain.');
       return null;
@@ -411,6 +414,7 @@ export class NodeManager {
         `-v ${hostDataDir}:${DOCKER_DATA_DIR}`,
         `-v ${configPath}:${DOCKER_NODE_CONFIG_PATH}:ro`,
         ...portArgs,
+        ...(options?.extraDockerArgs ?? []),
         dockerImage,
         `--conf.file ${DOCKER_NODE_CONFIG_PATH}`,
       ];

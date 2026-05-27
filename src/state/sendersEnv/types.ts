@@ -2,7 +2,7 @@
  * Types for SendersEnv - manages sender accounts for RPC requests
  */
 
-import { PrivateKeyAccount } from 'viem';
+import type { PrivateKeyAccount } from 'viem';
 
 /**
  * Sender role enum - unified role for all account types

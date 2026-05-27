@@ -67,7 +67,10 @@ export interface NodeManagerLike {
   getNode(nodeId: string): NodeInstance | undefined;
 
   // Node lifecycle
-  startNode(type: NodeType, options?: { dockerImage?: string }): Promise<NodeInstance | null>;
+  startNode(
+    type: NodeType,
+    options?: { dockerImage?: string; extraDockerArgs?: string[] },
+  ): Promise<NodeInstance | null>;
   stopNode(nodeId: string): Promise<boolean>;
   stopAllNodes(): Promise<void>;
   discoverExistingContainers(): Promise<void>;
