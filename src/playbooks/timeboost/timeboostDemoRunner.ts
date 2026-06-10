@@ -41,9 +41,16 @@ import { runOneAuction } from './auctionRunner.js';
 import { snapshotRound, formatRoundLine, waitUntilRound } from './roundClock.js';
 import { runExperimentPair, submitNormalTx, completeObservation } from './experimentRecorder.js';
 import { runUnauthorizedAttempt } from './unauthorizedTxRunner.js';
+import { runBidCancellationRound } from './bidCancellationRunner.js';
 import { generateReport } from './reportGenerator.js';
 import { biddingTokenAbi } from './abis.js';
-import type { AuctionEvent, ExperimentRecord, NoBidRoundRecord, UnauthorizedAttemptRecord } from './types.js';
+import type {
+  AuctionEvent,
+  BidCancellationRecord,
+  ExperimentRecord,
+  NoBidRoundRecord,
+  UnauthorizedAttemptRecord,
+} from './types.js';
 import { encodeFunctionData, type Address, type Hex } from 'viem';
 
 // ---------------------------------------------------------------------------
@@ -56,11 +63,22 @@ export interface TimeboostDemoResult {
   experiments: ExperimentRecord[];
   noBidRounds: NoBidRoundRecord[];
   unauthorized: UnauthorizedAttemptRecord[];
+  bidCancellations: BidCancellationRecord[];
   events: AuctionEvent[];
   deployed: DeployedContracts;
 }
 
-export async function runFullTimeboostDemo(ctx?: OperationContext): Promise<TimeboostDemoResult> {
+/** Options for the full demo. All optional, all default off. */
+export interface TimeboostDemoOptions {
+  /** Add the bid-cancellation round (default false). See bidCancellationRunner.ts. */
+  demoBidCancellation?: boolean;
+}
+
+export async function runFullTimeboostDemo(
+  ctx?: OperationContext,
+  options: TimeboostDemoOptions = {},
+): Promise<TimeboostDemoResult> {
+  const demoBidCancellation = options.demoBidCancellation ?? false;
   const chainEnv = ChainEnv.getInstance();
   const sendersEnv = SendersEnv.getInstance();
 
@@ -75,6 +93,8 @@ export async function runFullTimeboostDemo(ctx?: OperationContext): Promise<Time
     'Run 3 auction rounds',
     'Express-lane vs normal experiments',
     'Negative demo (NOT_EXPRESS_LANE_CONTROLLER)',
+    // Optional step — only shown when explicitly enabled (default off).
+    ...(demoBidCancellation ? ['Bid-cancellation round (optional)'] : []),
     'No-bid round (control)',
     'Generate HTML report',
   ]);
@@ -356,6 +376,39 @@ export async function runFullTimeboostDemo(ctx?: OperationContext): Promise<Time
   ctx?.stepCompleted('Negative demo (NOT_EXPRESS_LANE_CONTROLLER)');
 
   // -------------------------------------------------------------------------
+  // 8.5 Optional bid-cancellation round (default off) — Bob overwrites his own
+  //   high bid with a lower one on the same controller, flipping the win to
+  //   Alice (see bidCancellationRunner.ts). Runs as its own round at the tail
+  //   of the demo so the experiment rounds above are undisturbed.
+  // -------------------------------------------------------------------------
+  const bidCancellations: BidCancellationRecord[] = [];
+  if (demoBidCancellation) {
+    ctx?.throwIfCancelled();
+    ctx?.stepStarted('Bid-cancellation round (optional)');
+    tracker.start();
+
+    const cancellation = await runBidCancellationRound(
+      {
+        publicClient: restartedClient,
+        auctionAddress: deployed.auctionProxy,
+        bidValidatorUrl,
+        timing,
+        bidderKey: accounts.bob.privateKey,
+        rivalKey: accounts.alice.privateKey,
+        controller: accounts.carol.account.address,
+        rivalController: accounts.alice.account.address,
+        originalAmount: parseUnits('250', 0),
+        rivalAmount: parseUnits('100', 0),
+        cancelledToAmount: parseUnits('50', 0),
+        testTooManyBids: true,
+      },
+      monitor.events,
+    );
+    bidCancellations.push(cancellation);
+    ctx?.stepCompleted('Bid-cancellation round (optional)');
+  }
+
+  // -------------------------------------------------------------------------
   // 9. No-bid round
   // -------------------------------------------------------------------------
   ctx?.throwIfCancelled();
@@ -420,6 +473,7 @@ export async function runFullTimeboostDemo(ctx?: OperationContext): Promise<Time
     experiments,
     noBidRounds,
     unauthorized,
+    bidCancellations,
     events,
   });
   logger.success(`Report: ${reportRes.filePath} (${(reportRes.byteSize / 1024).toFixed(1)} KB)`);
@@ -433,6 +487,7 @@ export async function runFullTimeboostDemo(ctx?: OperationContext): Promise<Time
     experiments,
     noBidRounds,
     unauthorized,
+    bidCancellations,
     events,
     deployed,
   };
@@ -502,16 +557,21 @@ async function generateAndFundDemoAccounts(input: FundInput): Promise<DemoAccoun
     eve: makeActor(),
   };
 
-  // Fund each demo account with native ETH for gas.
-  const ethEach = parseEther('0.05');
+  // Fund each demo account with native ETH for GAS ONLY. Every demo tx is a
+  // zero-value transfer (deposits/bids move ERC20, not ETH; bids are submitted
+  // off-chain to the auctioneer; express/normal/unauthorized txs all send
+  // value=0). On a fresh Orbit chain gas is sub-gwei, so a handful of txs costs
+  // well under a milli-ETH. 0.002 ETH is already ~10-20x headroom per account.
+  const ethEach = parseEther('0.002');
   for (const [name, actor] of Object.entries(accounts) as [keyof DemoAccounts, DemoActor][]) {
     await signAndSend(input.publicClient, input.deployer, { to: actor.account.address, value: ethEach });
     logger.info(`funded ${name} (${actor.account.address}) with ${formatEther(ethEach)} ETH`);
   }
-  // Auctioneer hot wallet needs ETH to send resolve* txs.
+  // Auctioneer hot wallet sends ~1 resolve* tx per round (gas only). 0.005 ETH
+  // is plenty for the demo's handful of rounds.
   await signAndSend(input.publicClient, input.deployer, {
     to: input.auctioneerToFund,
-    value: parseEther('0.1'),
+    value: parseEther('0.005'),
   });
 
   // Mint bidding tokens to Alice & Bob.
@@ -610,16 +670,23 @@ function wipeLocalChainData(chainId: number | bigint): void {
 }
 
 /**
- * Bridge ~0.5 ETH from L1 → L2 deployer if its L2 balance is below 0.5 ETH.
- * Required because deployChain bridges only ~0.001 ETH which is way too little
- * for 4 contract deploys + 5 demo account fundings + auctioneer hot wallet.
+ * Bridge a small amount of ETH from L1 → L2 deployer if its L2 balance is below
+ * the target. Required because deployChain bridges only ~0.001 ETH, too little
+ * for the deployer to pay GAS for 4 contract deploys + token mints + funding 5
+ * demo accounts + the auctioneer hot wallet.
+ *
+ * Everything on the child chain is gas-only (no real value moves — bids are
+ * off-chain, deposits move ERC20, all demo txs are value=0), and a fresh Orbit
+ * chain prices gas in sub-gwei, so the target is intentionally small. 0.02 ETH
+ * comfortably covers the whole demo (the prior 0.5 ETH was ~25x over-provisioned
+ * and forced a needlessly large, often-unaffordable L1→L2 bridge).
  */
 async function topUpDeployerOnL2(args: {
   chainEnv: ChainEnv;
   deployer: ReturnType<typeof privateKeyToAccount>;
   childPublic: ReturnType<typeof createPublicClient>;
 }): Promise<void> {
-  const TARGET = parseEther('0.5');
+  const TARGET = parseEther('0.02');
   const balance = await args.childPublic.getBalance({ address: args.deployer.address });
   logger.info(`L2 deployer balance: ${formatEther(balance)} ETH`);
   if (balance >= TARGET) {
@@ -627,7 +694,7 @@ async function topUpDeployerOnL2(args: {
     return;
   }
 
-  const need = TARGET - balance + parseEther('0.05'); // little buffer
+  const need = TARGET - balance + parseEther('0.003'); // little buffer
   const coreContracts = args.chainEnv.chainConfig.getCoreContracts();
   const inbox = coreContracts?.inbox as `0x${string}` | undefined;
   if (!inbox) throw new Error('inbox address not available from ChainEnv');

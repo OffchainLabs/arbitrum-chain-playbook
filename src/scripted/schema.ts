@@ -70,3 +70,11 @@ export const BoldChallengeParamsSchema = z
   })
   .strict();
 export type BoldChallengeHeadlessInput = z.infer<typeof BoldChallengeParamsSchema>;
+
+export const TimeboostRunFullDemoParamsSchema = z
+  .object({
+    /** Add the bid-cancellation round (default false): re-bidding lower on the same controller flips the winner. */
+    bidCancellation: z.boolean().optional().default(false),
+  })
+  .strict();
+export type TimeboostRunFullDemoHeadlessInput = z.infer<typeof TimeboostRunFullDemoParamsSchema>;
