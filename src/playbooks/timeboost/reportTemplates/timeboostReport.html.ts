@@ -13,6 +13,7 @@
 
 import type {
   AuctionEvent,
+  BidCancellationRecord,
   ExperimentRecord,
   NoBidRoundRecord,
   ReportData,
@@ -41,6 +42,7 @@ ${renderSummaryCards(data)}
 ${renderTimelineSection(data)}
 ${renderNoBidSection(data)}
 ${renderUnauthorizedSection(data)}
+${renderBidCancellationSection(data)}
 ${renderEventFeed(data.events)}
 ${renderRawTable(data)}
 ${renderFooter()}
@@ -102,6 +104,15 @@ function renderSummaryCards(d: ReportData): string {
     `${s.unauthorizedRecognisedCount} / ${s.unauthorizedAttempts}`,
     s.unauthorizedRecognisedCount === s.unauthorizedAttempts ? 'good' : 'bad',
   )}
+  ${
+    s.bidCancellationRounds > 0
+      ? card(
+          'Bid cancellations flipped',
+          `${s.bidCancellationFlippedCount} / ${s.bidCancellationRounds}`,
+          s.bidCancellationFlippedCount === s.bidCancellationRounds ? 'good' : 'bad',
+        )
+      : ''
+  }
 </section>`;
 }
 
@@ -302,6 +313,53 @@ function renderUnauthorizedRow(u: UnauthorizedAttemptRecord): string {
 }
 
 // ---------------------------------------------------------------------------
+// Bid cancellation (optional demo)
+// ---------------------------------------------------------------------------
+
+function renderBidCancellationSection(d: ReportData): string {
+  // Default-off: render nothing at all when the optional demo didn't run, so
+  // baseline reports are byte-for-byte unaffected.
+  if (d.bidCancellations.length === 0) return '';
+
+  const rows = d.bidCancellations.map((b) => renderBidCancellationRow(b)).join('\n');
+  return `<section>
+  <h2>Bid cancellation (optional demo)</h2>
+  <p>Timeboost has no explicit "cancel bid" call — bids are sealed-bid commitments
+     held off-chain by the auctioneer. A bidder "cancels" by <b>re-submitting a lower
+     bid that names the same express-lane controller</b>: the auctioneer keeps only one
+     bid per controller (its cache is keyed by controller and overwrites on each add),
+     so the lower re-bid replaces the higher one. Below, the canceller's high bid is
+     overwritten down past a rival's bid, <b>flipping</b> which controller wins the round.</p>
+  <table class="raw">
+    <thead><tr>
+      <th>Round</th><th>Canceller</th><th>Original →  re-bid</th><th>Rival bid</th>
+      <th>Reserve</th><th>Observed winner</th><th>Flipped</th><th>Bid cap</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+</section>`;
+}
+
+function renderBidCancellationRow(b: BidCancellationRecord): string {
+  const cls = b.flipped ? 'good' : 'bad';
+  const cap = b.tooManyBids
+    ? b.tooManyBids.rejected
+      ? `✓ capped (${escapeHtml(b.tooManyBids.errorMessage ?? '')})`
+      : `not reached (${b.tooManyBids.accepted} extra)`
+    : '—';
+  return `<tr class="${cls}">
+    <td>${b.round}</td>
+    <td><code>${escapeHtml(b.bidder)}</code><br><span class="muted">controller <code>${escapeHtml(b.controller)}</code></span></td>
+    <td>${b.originalAmount.toString()} → <b>${b.cancelledToAmount.toString()}</b></td>
+    <td>${b.rivalAmount.toString()}<br><span class="muted">controller <code>${escapeHtml(b.rivalController)}</code></span></td>
+    <td>${b.reservePrice.toString()}</td>
+    <td><code>${escapeHtml(b.observedWinner ?? '<none>')}</code></td>
+    <td>${b.flipped ? '✓' : '✗'}</td>
+    <td>${escapeHtml(cap)}</td>
+  </tr>`;
+}
+
+// ---------------------------------------------------------------------------
 // Auction event feed
 // ---------------------------------------------------------------------------
 
@@ -438,6 +496,7 @@ table.raw tr.bad  td { color: var(--bad); }
 .evt-deposit                  { background: #fef7e0; color: var(--warn); }
 .evt-other                    { background: var(--panel); color: var(--muted); }
 footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--grid); color: var(--muted); font-size: 12px; }
+.muted { color: var(--muted); }
 code { font-family: SFMono-Regular, Menlo, monospace; }
 `;
 

@@ -78,6 +78,36 @@ export interface UnauthorizedAttemptRecord {
   recognised: boolean; // true iff errorMessage contains the expected sentinel
 }
 
+/**
+ * Outcome of the optional bid-cancellation demo (default off). Timeboost has no
+ * cancel primitive: the bidder re-submits a lower bid naming the SAME controller,
+ * which overwrites their entry in the auctioneer's controller-keyed bid cache
+ * (nitro/timeboost/bid_cache.go) and flips the round to the rival. Amounts are
+ * bidding-token wei.
+ */
+export interface BidCancellationRecord {
+  round: number;
+  /** Bidder who cancels by overwriting their own bid. */
+  bidder: Address;
+  /** Controller named in both of the canceller's bids (would have won without the cancel). */
+  controller: Address;
+  /** Controller named by the rival bid that wins after the cancellation. */
+  rivalController: Address;
+  /** On-chain reserve price at bid time; the cancel bid is clamped to >= this. */
+  reservePrice: bigint;
+  /** original > rival > cancelled (>= reserve). */
+  originalAmount: bigint;
+  cancelledToAmount: bigint;
+  rivalAmount: bigint;
+  /** Controller from SetExpressLaneController after resolution (== rivalController when flipped). */
+  observedWinner: Address | null;
+  flipped: boolean;
+  resolvedEvent?: AuctionEvent;
+  controllerSetEvent?: AuctionEvent;
+  /** Probe of the per-sender per-round bid cap (nitro default 5). */
+  tooManyBids?: { attempted: number; accepted: number; rejected: boolean; errorMessage?: string };
+}
+
 // =============================================================================
 // Report data (Phase 7)
 // =============================================================================
@@ -93,6 +123,8 @@ export interface ReportSummary {
   noBidRoundsObserved: number;
   unauthorizedAttempts: number;
   unauthorizedRecognisedCount: number;
+  bidCancellationRounds: number; // 0 when the optional demo is off
+  bidCancellationFlippedCount: number; // # cancellation rounds where the winner flipped as expected
 }
 
 /** AuctionResolved / SetExpressLaneController event captured during the demo. */
@@ -126,6 +158,7 @@ export interface ReportData {
   experiments: ExperimentRecord[];
   noBidRounds: NoBidRoundRecord[];
   unauthorized: UnauthorizedAttemptRecord[];
+  bidCancellations: BidCancellationRecord[]; // empty when the optional demo is off
   events: AuctionEvent[];
   summary: ReportSummary;
 }

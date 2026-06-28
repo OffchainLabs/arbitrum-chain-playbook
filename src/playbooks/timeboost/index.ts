@@ -18,6 +18,9 @@ import { breadcrumb } from '../../utils/breadcrumb.js';
 import { withCancellation, type OperationContext } from '../../utils/cancellation.js';
 import { runFullTimeboostDemo, viewTimeboostStatus, stopTimeboostStack } from './timeboostDemoRunner.js';
 
+/** Headless command id for the full demo (shared with the scripted runner). */
+export const HEADLESS_COMMAND_TIMEBOOST_RUN_FULL_DEMO = 'run-full-demo';
+
 enum TimeboostAction {
   RUN_FULL_DEMO = 'run_full_demo',
   VIEW_STATUS = 'view_status',
@@ -92,7 +95,8 @@ class TimeboostPlaybook implements Playbook {
     logger.raw('  5. Run a multi-round auction with 2 bidders + 1 controller');
     logger.raw('  6. Race express-lane vs normal txs and capture receipts');
     logger.raw('  7. Demonstrate NOT_EXPRESS_LANE_CONTROLLER rejection');
-    logger.raw('  8. Generate an HTML report under logs/');
+    logger.raw(`  8. ${chalk.dim('(optional)')} Bid-cancellation round — re-bid lower to flip the winner`);
+    logger.raw('  9. Generate an HTML report under logs/');
     logger.newline();
     logger.warn('This will redeploy your chain (existing chain data will be deleted).');
     logger.newline();
@@ -105,8 +109,19 @@ class TimeboostPlaybook implements Playbook {
       return;
     }
 
+    // Optional add-on, default OFF: re-bidding a lower amount on the same
+    // controller cancels/overwrites the original bid and flips the round.
+    const { demoBidCancellation } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'demoBidCancellation',
+        message: 'Include optional bid-cancellation round? (shows how re-bidding flips the winner)',
+        default: false,
+      },
+    ]);
+
     try {
-      await withCancellation('Timeboost Demo', (ctx) => runFullTimeboostDemo(ctx));
+      await withCancellation('Timeboost Demo', (ctx) => runFullTimeboostDemo(ctx, { demoBidCancellation }));
     } catch (e) {
       logger.errorWithFix(
         `Demo failed: ${e instanceof Error ? e.message : String(e)}`,
@@ -130,20 +145,24 @@ class TimeboostPlaybook implements Playbook {
   listHeadlessCommands(): HeadlessCommandSpec[] {
     return [
       {
-        command: 'run-full-demo',
-        description: 'Deploy + bid + race + report, all unattended.',
+        command: HEADLESS_COMMAND_TIMEBOOST_RUN_FULL_DEMO,
+        description:
+          'Deploy + bid + race + report, all unattended. ' +
+          'Optional param `bidCancellation: true` adds a round that shows re-bidding/cancellation flipping the winner (default false).',
         supportedModes: [OperationMode.CHAIN],
         redeploysChain: true,
       },
     ];
   }
 
-  async runHeadless(command: string, _params: unknown, ctx?: OperationContext): Promise<PlaybookActionResult> {
-    if (command !== 'run-full-demo') {
+  async runHeadless(command: string, params: unknown, ctx?: OperationContext): Promise<PlaybookActionResult> {
+    if (command !== HEADLESS_COMMAND_TIMEBOOST_RUN_FULL_DEMO) {
       return { success: false, message: `Unknown command: ${command}` };
     }
+    // Schema applies the default in scripted runs; stay defensive for direct callers.
+    const demoBidCancellation = Boolean((params as { bidCancellation?: boolean } | undefined)?.bidCancellation);
     try {
-      const result = await runFullTimeboostDemo(ctx);
+      const result = await runFullTimeboostDemo(ctx, { demoBidCancellation });
       return { success: true, message: 'Demo finished', data: result };
     } catch (e) {
       return { success: false, message: e instanceof Error ? e.message : String(e) };

@@ -28,6 +28,7 @@ import {
   type ChainRestorePolicy,
   MaliciousMintParamsSchema,
   BoldChallengeParamsSchema,
+  TimeboostRunFullDemoParamsSchema,
 } from './schema.js';
 import { initializeApp, initializeChainMode } from '../init.js';
 import { ChainEnv, setNodeManagerClass } from '../state/chainEnv/index.js';
@@ -52,6 +53,7 @@ import {
   HEADLESS_COMMAND_MALICIOUS_MINT,
   HEADLESS_COMMAND_BOLD_CHALLENGE,
 } from '../playbooks/malicious-validator/index.js';
+import { HEADLESS_COMMAND_TIMEBOOST_RUN_FULL_DEMO } from '../playbooks/timeboost/index.js';
 import {
   createHeadlessSessionId,
   installHeadlessSessionEnv,
@@ -298,6 +300,9 @@ function pickParamsSchema(playbook: string, command: string): ZodTypeAny | null 
   if (playbook === 'malicious-validator') {
     if (command === HEADLESS_COMMAND_MALICIOUS_MINT) return MaliciousMintParamsSchema;
     if (command === HEADLESS_COMMAND_BOLD_CHALLENGE) return BoldChallengeParamsSchema;
+  }
+  if (playbook === 'timeboost') {
+    if (command === HEADLESS_COMMAND_TIMEBOOST_RUN_FULL_DEMO) return TimeboostRunFullDemoParamsSchema;
   }
   return null;
 }

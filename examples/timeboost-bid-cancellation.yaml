@@ -1,0 +1,36 @@
+# Headless Timeboost demo WITH the optional bid-cancellation round enabled.
+#
+# Identical to examples/timeboost-demo.yaml, plus one extra round that shows how
+# a bidder "cancels" a sealed bid. Timeboost has no explicit cancel call — the
+# bidder re-submits a LOWER bid naming the SAME express-lane controller, which
+# overwrites their entry in the auctioneer's controller-keyed bid cache and
+# flips the round to a rival who otherwise would have lost. The round also
+# probes the per-sender per-round bid cap (nitro default 5).
+#
+# What it adds on top of the standard demo:
+#   - Bob bids HIGH (250) naming Carol; Alice bids MEDIUM (100) naming herself.
+#   - Bob re-bids LOW (50) on the SAME controller (Carol) → original overwritten.
+#   - Resolution flips: Alice wins and controls the express lane, not Carol.
+#   - The HTML report gains a "Bid cancellation" section + summary card.
+#
+# Required env vars (read from .env or shell):
+#   PARENT_CHAIN_RPC                  Arbitrum Sepolia (or other parent) RPC endpoint
+#   MAIN_PRIVATE_KEY                  Funded deployer key on the parent chain (~0.7 sETH minimum)
+#
+# Run:
+#   yarn run:script examples/timeboost-bid-cancellation.yaml
+
+mode: chain
+playbook: timeboost
+command: run-full-demo
+
+# Enable the optional bid-cancellation round (default false).
+params:
+  bidCancellation: true
+
+# auto sees this command redeploys and skips stale chain restore before the demo.
+chainRestorePolicy: auto
+# Set to "stop" only when you explicitly want headless to stop existing nitro-* containers first.
+orphanContainerPolicy: warn
+# The extra cancellation round adds ~1 auction round; bump the outer cap a bit.
+timeoutSeconds: 1080

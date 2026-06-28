@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { renderReport } from './reportTemplates/timeboostReport.html.js';
 import type {
   AuctionEvent,
+  BidCancellationRecord,
   ExperimentRecord,
   NoBidRoundRecord,
   ReportData,
@@ -34,6 +35,7 @@ export interface BuildReportInput {
   experiments: ExperimentRecord[];
   noBidRounds: NoBidRoundRecord[];
   unauthorized: UnauthorizedAttemptRecord[];
+  bidCancellations?: BidCancellationRecord[];
   events: AuctionEvent[];
 }
 
@@ -51,6 +53,7 @@ export function buildReportData(input: BuildReportInput): ReportData {
     experiments: input.experiments,
     noBidRounds: input.noBidRounds,
     unauthorized: input.unauthorized,
+    bidCancellations: input.bidCancellations ?? [],
     events: input.events,
     summary: computeSummary(input),
   };
@@ -75,6 +78,8 @@ export function computeSummary(input: BuildReportInput): ReportSummary {
 
   const crossBlock = input.experiments.filter((e) => e.normal.blockNumber > e.expressLane.blockNumber).length;
 
+  const bidCancellations = input.bidCancellations ?? [];
+
   return {
     totalExperiments: total,
     expressTimeboostedCount: expressTimeboosted,
@@ -85,6 +90,8 @@ export function computeSummary(input: BuildReportInput): ReportSummary {
     noBidRoundsObserved: input.noBidRounds.length,
     unauthorizedAttempts: input.unauthorized.length,
     unauthorizedRecognisedCount: input.unauthorized.filter((u) => u.recognised).length,
+    bidCancellationRounds: bidCancellations.length,
+    bidCancellationFlippedCount: bidCancellations.filter((b) => b.flipped).length,
   };
 }
 
