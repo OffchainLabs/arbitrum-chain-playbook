@@ -6,8 +6,8 @@
 // Docker Configuration
 // =============================================================================
 
-/** Standard Nitro node Docker image */
-export const DOCKER_IMAGE = 'offchainlabs/nitro-node:v3.9.5-66e42c4';
+/** Standard Nitro node Docker image (default for the MAIN node + timeboost services) */
+export const DOCKER_IMAGE = 'offchainlabs/nitro-node:v3.9.6-91bf578';
 
 /** Malicious validator image with ReadInboxMessage bit-flip support (Challenge Demo) — must be built locally */
 export const DOCKER_IMAGE_MALICIOUS = 'nitro-malicious-playbook-challenge-demo:latest';
