@@ -30,7 +30,7 @@ If you want to know the structure of this project and how to add playbooks, plea
 
 ## Prerequisites
 
-- **Node.js** v23 or higher
+- **Node.js** v22.x (Node 23+ is not yet supported — `ts-node/esm` hits a `require()` cycle error there)
 - **Docker** (for running Nitro nodes)
 - **Yarn** or **npm**
 
