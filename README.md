@@ -238,4 +238,4 @@ CHAIN_DEPLOYMENT_TRANSACTION_HASH=0x1234...
 
 ## For Developers
 
-For architecture details, API documentation, and how to add new playbooks, see [README-DEV.md](./README-DEV.md).
+For architecture details, API documentation, and how to add new playbooks, see [readme-dev.md](./readme-dev.md).

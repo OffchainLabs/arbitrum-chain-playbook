@@ -25,7 +25,6 @@
     "test:docker": "RUN_DOCKER_TESTS=true node --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"ts-node/esm\", pathToFileURL(\"./\"));' --test tests/core/docker/**/*.ts",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "malicious-mint": "node --loader ts-node/esm scripts/maliciousMintAndWithdraw.ts",
     "run:script": "node --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"ts-node/esm\", pathToFileURL(\"./\"));' src/scripted/runScript.ts"
   },
   "dependencies": {
