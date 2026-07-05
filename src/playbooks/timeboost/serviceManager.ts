@@ -20,6 +20,7 @@
 
 import { dockerCommand } from 'docker-cli-js';
 import type { Address } from 'viem';
+import { log, sleep } from './util.js';
 
 const REDIS_CONTAINER = 'timeboost-redis';
 const BID_VALIDATOR_CONTAINER = 'timeboost-bid-validator';
@@ -28,12 +29,6 @@ const AUCTIONEER_CONTAINER = 'timeboost-auctioneer';
 const REDIS_HOST_PORT = 6379;
 export const BID_VALIDATOR_HOST_PORT = 9372;
 const AUCTIONEER_HTTP_HOST_PORT = 9373; // not strictly required; helpful for poking
-
-const log = {
-  info: (m: string) => console.log('ℹ', m),
-  warn: (m: string) => console.log('⚠', m),
-  success: (m: string) => console.log('✔', m),
-};
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -222,8 +217,4 @@ async function waitForLogLine(container: string, pattern: RegExp, timeoutMs: num
     await sleep(500);
   }
   log.warn(`Container ${container} did not log a line matching ${pattern} within ${timeoutMs}ms — continuing anyway`);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }

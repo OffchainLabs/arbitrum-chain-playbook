@@ -15,12 +15,7 @@
 import { type Address, type Hash, type PublicClient, decodeEventLog } from 'viem';
 import { expressLaneAuctionArtifact } from './abis.js';
 import type { AuctionEvent } from './types.js';
-
-const log = {
-  info: (m: string) => console.log('ℹ', m),
-  warn: (m: string) => console.log('⚠', m),
-  event: (m: string) => console.log('•', m),
-};
+import { log } from './util.js';
 
 export interface AuctionMonitorHandle {
   events: AuctionEvent[];

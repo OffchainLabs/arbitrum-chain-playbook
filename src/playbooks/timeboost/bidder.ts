@@ -30,12 +30,7 @@ import {
 import { sign as signRawHash, signatureToHex, privateKeyToAccount } from 'viem/accounts';
 import { ierc20Abi, expressLaneAuctionArtifact } from './abis.js';
 import { rawRpcCall, TimeboostRpcError } from './expressLaneRunner.js';
-
-const log = {
-  info: (m: string) => console.log('ℹ', m),
-  warn: (m: string) => console.log('⚠', m),
-  success: (m: string) => console.log('✔', m),
-};
+import { log } from './util.js';
 
 // ---------------------------------------------------------------------------
 // Types

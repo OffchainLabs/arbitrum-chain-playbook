@@ -19,13 +19,7 @@ import { expressLaneAuctionArtifact } from './abis.js';
 import { snapshotRound, formatRoundLine, waitUntilRound, type RoundTiming } from './roundClock.js';
 import { TimeboostRpcError } from './expressLaneRunner.js';
 import type { AuctionEvent, BidCancellationRecord } from './types.js';
-
-const log = {
-  info: (m: string) => console.log('ℹ', m),
-  warn: (m: string) => console.log('⚠', m),
-  success: (m: string) => console.log('✔', m),
-  section: (m: string) => console.log('\n▸', m, '\n'),
-};
+import { log, sleep } from './util.js';
 
 const TOO_MANY_BIDS_SENTINEL = 'PER_ROUND_BID_LIMIT_REACHED';
 
@@ -183,8 +177,4 @@ function findEvent(events: AuctionEvent[], kind: AuctionEvent['kind'], round: bi
     .slice()
     .reverse()
     .find((e) => e.kind === kind && e.raw?.round?.toString() === round.toString());
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }

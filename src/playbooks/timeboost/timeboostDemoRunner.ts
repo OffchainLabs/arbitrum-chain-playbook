@@ -26,6 +26,7 @@ import { NodeType } from '../../types/index.js';
 import { DOCKER_IMAGE, NODE_CONFIG_FILENAME } from '../../types/constants.js';
 import { type OperationContext } from '../../utils/cancellation.js';
 import { StepTracker } from '../../utils/ui.js';
+import { sleep } from './util.js';
 
 import { deployChain } from '../../core/deployChain/deployChain.js';
 import { getParentChain } from '../../utils/parentChain.js';
@@ -738,8 +739,4 @@ function firstRegular(sendersEnv: SendersEnv): { privateKey: `0x${string}` } {
   const senders = sendersEnv.getAllByRole(SenderRole.RegularSender);
   if (senders.length === 0) throw new Error('No RegularSender account in SendersEnv.');
   return senders[0];
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }

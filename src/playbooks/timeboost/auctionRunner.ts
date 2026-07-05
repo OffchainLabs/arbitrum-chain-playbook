@@ -23,13 +23,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { approveAndDeposit, submitBid, type SubmittedBid } from './bidder.js';
 import { snapshotRound, formatRoundLine, waitUntilRound, type RoundTiming } from './roundClock.js';
 import type { AuctionEvent } from './types.js';
-
-const log = {
-  info: (m: string) => console.log('ℹ', m),
-  warn: (m: string) => console.log('⚠', m),
-  success: (m: string) => console.log('✔', m),
-  section: (m: string) => console.log('\n▸', m, '\n'),
-};
+import { log, sleep } from './util.js';
 
 export interface RunOneAuctionInput {
   publicClient: PublicClient;
@@ -172,8 +166,4 @@ async function waitForBiddingWindow(timing: RoundTiming): Promise<void> {
     // We're inside the closing window; sleep until the next round opens.
     await sleep(Math.min(2000, snap.secondsToNextRound * 1000 + 100));
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }
