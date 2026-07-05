@@ -30,6 +30,7 @@ import {
 } from '../../types/constants.js';
 import { withCancellation, type OperationContext } from '../../utils/cancellation.js';
 import { breadcrumb } from '../../utils/breadcrumb.js';
+import { positiveNumberValidator } from '../../utils/inquirerUtils.js';
 import chalk from 'chalk';
 
 export const HEADLESS_COMMAND_MALICIOUS_MINT = 'malicious-mint';
@@ -243,30 +244,21 @@ class MaliciousValidatorPlaybook implements Playbook {
           name: 'mainDepositAmount',
           message: 'Main deposit amount (ETH):',
           default: '0.05',
-          validate: (input: string) => {
-            const num = parseFloat(input);
-            return !isNaN(num) && num > 0 ? true : 'Please enter a valid positive number';
-          },
+          validate: positiveNumberValidator(),
         },
         {
           type: 'input',
           name: 'hackerDepositAmount',
           message: 'B deposit amount (ETH):',
           default: '0.001',
-          validate: (input: string) => {
-            const num = parseFloat(input);
-            return !isNaN(num) && num > 0 ? true : 'Please enter a valid positive number';
-          },
+          validate: positiveNumberValidator(),
         },
         {
           type: 'input',
           name: 'hackerFundingAmount',
           message: 'B funding amount for gas (ETH):',
           default: '0.002',
-          validate: (input: string) => {
-            const num = parseFloat(input);
-            return !isNaN(num) && num > 0 ? true : 'Please enter a valid positive number';
-          },
+          validate: positiveNumberValidator(),
         },
       ]);
 
@@ -349,30 +341,21 @@ class MaliciousValidatorPlaybook implements Playbook {
           name: 'maxWaitSeconds',
           message: 'Maximum wait time for challenge (seconds):',
           default: String(DEFAULT_CHALLENGE_DEMO_CONFIG.maxWaitSeconds),
-          validate: (input: string) => {
-            const num = parseInt(input, 10);
-            return !isNaN(num) && num > 0 ? true : 'Please enter a valid positive number';
-          },
+          validate: positiveNumberValidator((s) => parseInt(s, 10)),
         },
         {
           type: 'input',
           name: 'delayedMessageCount',
           message: 'Number of delayed messages (L1 deposits):',
           default: String(DEFAULT_CHALLENGE_DEMO_CONFIG.delayedMessageCount),
-          validate: (input: string) => {
-            const num = parseInt(input, 10);
-            return !isNaN(num) && num > 0 ? true : 'Please enter a valid positive number';
-          },
+          validate: positiveNumberValidator((s) => parseInt(s, 10)),
         },
         {
           type: 'input',
           name: 'childChainTxCount',
           message: 'Number of L2 transactions:',
           default: String(DEFAULT_CHALLENGE_DEMO_CONFIG.childChainTxCount),
-          validate: (input: string) => {
-            const num = parseInt(input, 10);
-            return !isNaN(num) && num > 0 ? true : 'Please enter a valid positive number';
-          },
+          validate: positiveNumberValidator((s) => parseInt(s, 10)),
         },
       ]);
 
