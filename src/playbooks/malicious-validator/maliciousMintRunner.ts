@@ -17,6 +17,7 @@ import {
   defineChain,
   type Chain,
   type Hash,
+  type TransactionReceipt,
 } from 'viem';
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
 import { getParentChain } from '../../utils/parentChain.js';
@@ -36,7 +37,7 @@ import logger from '../../utils/logger.js';
 import { overwriteNodeConfigFile } from '../../core/nodeConfig/nodeConfigOperations.js';
 import { StepTracker } from '../../utils/ui.js';
 import { type OperationContext, cancellableSleep } from '../../utils/cancellation.js';
-import { deployChain } from '../../core/deployChain/deployChain.js';
+import { redeployFreshChain } from '../runnerKit.js';
 import { inboxAbi, arbMinterAbi, arbSysAbi, rollupCoreAbi } from './abis.js';
 import { type MaliciousMintConfig, type MaliciousMintResult, ARB_SYS_ADDRESS, ARB_MINTER_ADDRESS } from './types.js';
 import { startRollupMonitor, stopRollupMonitor } from './monitor.js';
@@ -207,6 +208,250 @@ function getEnvConfig(): {
   };
 }
 
+/** Decoded fields of the ArbSys `L2ToL1Tx` event needed to execute a withdrawal on L1. */
+type L2ToL1TxData = {
+  caller: Address;
+  destination: Address;
+  hash: bigint;
+  position: bigint;
+  arbBlockNum: bigint;
+  ethBlockNum: bigint;
+  timestamp: bigint;
+  callvalue: bigint;
+  data: `0x${string}`;
+};
+
+/**
+ * Find and decode the `L2ToL1Tx` event among the logs ArbSys emitted for a
+ * withdrawal. Returns null if it isn't present. Best-effort: also logs the
+ * withdrawal block's Arbitrum-specific sendRoot/sendCount when the node exposes
+ * them (used later to correlate the message position to the assertion sendRoot).
+ */
+async function parseL2ToL1TxData(
+  withdrawReceipt: TransactionReceipt,
+  childClient: PublicClient,
+): Promise<L2ToL1TxData | null> {
+  let l2ToL1TxData: L2ToL1TxData | null = null;
+
+  // Find and decode L2ToL1Tx event from all logs emitted by ArbSys
+  const arbSysLogs = withdrawReceipt.logs.filter((log) => log.address.toLowerCase() === ARB_SYS_ADDRESS.toLowerCase());
+
+  for (const log of arbSysLogs) {
+    try {
+      // Use arbSysAbi (the complete ABI from SDK) to decode events
+      const decoded = decodeEventLog({
+        abi: arbSysAbi,
+        data: log.data,
+        topics: log.topics,
+      });
+      if (decoded.eventName === 'L2ToL1Tx') {
+        logger.success('L2ToL1Tx event detected');
+        // Type assertion needed because viem's decodeEventLog returns union type
+        const args = decoded.args as L2ToL1TxData;
+        l2ToL1TxData = {
+          caller: args.caller,
+          destination: args.destination,
+          hash: args.hash,
+          position: args.position,
+          arbBlockNum: args.arbBlockNum,
+          ethBlockNum: args.ethBlockNum,
+          timestamp: args.timestamp,
+          callvalue: args.callvalue,
+          data: args.data,
+        };
+        logger.info(`  Position (index): ${l2ToL1TxData.position}`);
+        logger.info(`  L2 Block: ${l2ToL1TxData.arbBlockNum}`);
+        logger.info(`  Value: ${formatEther(l2ToL1TxData.callvalue)} ETH`);
+        break; // Found the L2ToL1Tx event, stop searching
+      }
+    } catch {
+      // This log is not L2ToL1Tx, continue to next log
+      continue;
+    }
+  }
+
+  if (!l2ToL1TxData) {
+    logger.warn('L2ToL1Tx event not found in logs');
+    logger.info(`  Total logs from ArbSys: ${arbSysLogs.length}`);
+  } else {
+    // Best-effort: fetch Arbitrum-specific sendRoot/sendCount from the withdrawal block.
+    // This helps us later correlate the outgoing message position to the rollup assertion sendRoot.
+    try {
+      const request = (childClient as any).request ?? (childClient as any).transport?.request;
+      if (request) {
+        const blockNumberHex = `0x${l2ToL1TxData.arbBlockNum.toString(16)}`;
+        const block = await request({
+          method: 'eth_getBlockByNumber',
+          params: [blockNumberHex, false],
+        });
+        const sendRoot = (block as any)?.sendRoot as string | undefined;
+        const sendCount = (block as any)?.sendCount as string | undefined;
+        if (sendRoot && sendCount) {
+          const sendRootNorm = normalizeBytes32Like(sendRoot);
+          const sendCountBi = BigInt(sendCount);
+          logger.info(`  L2 block sendRoot: ${sendRootNorm}`);
+          logger.info(`  L2 block sendCount: ${sendCountBi} (message position: ${l2ToL1TxData.position})`);
+        }
+      }
+    } catch {
+      // Ignore - not all nodes expose Arbitrum-specific block fields
+    }
+  }
+
+  return l2ToL1TxData;
+}
+
+/**
+ * Once the withdrawal has been initiated on L2, either execute it on L1 (when
+ * the challenge period is short enough to wait out) or note that manual
+ * execution will be needed later. Returns the execution outcome for the summary.
+ */
+async function executeOrPollWithdrawal(params: {
+  confirmPeriodBlocks: bigint;
+  envConfig: ReturnType<typeof getEnvConfig>;
+  hackerPrivateKey: `0x${string}`;
+  hackerAddress: Address;
+  withdrawTx: Hash;
+  parentClient: PublicClient;
+  ctx?: OperationContext;
+}): Promise<{
+  withdrawalExecuted: boolean;
+  withdrawalTxHash: Hash | null;
+  withdrawalExecutionError: string | null;
+}> {
+  const { confirmPeriodBlocks, envConfig, hackerPrivateKey, hackerAddress, withdrawTx, parentClient, ctx } = params;
+
+  let withdrawalExecuted = false;
+  let withdrawalExecutionError: string | null = null;
+  let withdrawalTxHash: Hash | null = null;
+
+  if (confirmPeriodBlocks < BigInt(20)) {
+    logger.info('confirmPeriodBlocks < 20, polling for withdrawal message status...');
+
+    // Ensure custom network is registered with the SDK
+    ensureCustomNetworkRegistered(envConfig.chainId, envConfig.parentChainId, envConfig.coreContracts);
+
+    // Execute withdrawal on L1 using @arbitrum/sdk
+    logger.info('Preparing to execute withdrawal on L1 using Arbitrum SDK...');
+
+    try {
+      // Create ethers providers for SDK
+      const parentChainProvider = new providers.JsonRpcProvider(envConfig.parentChainRpc);
+      const childChainProvider = new providers.JsonRpcProvider(envConfig.chainRpc);
+
+      // Create wallet for B using ethers
+      const parentWalletHacker = new Wallet(hackerPrivateKey, parentChainProvider);
+
+      // Get the withdrawal transaction receipt and wrap it with SDK
+      const receipt = await childChainProvider.getTransactionReceipt(withdrawTx);
+      const childTransactionReceipt = new ChildTransactionReceipt(receipt);
+
+      // Get child-to-parent messages from the receipt
+      const messages = await childTransactionReceipt.getChildToParentMessages(parentWalletHacker);
+
+      if (messages.length === 0) {
+        throw new Error('No child-to-parent messages found in transaction');
+      }
+
+      const childToParentMessage = messages[0];
+      logger.info(`Found ${messages.length} child-to-parent message(s)`);
+
+      // Check initial message status
+      const initialStatus = await childToParentMessage.status(childChainProvider);
+      logger.info(`Initial message status: ${ChildToParentMessageStatus[initialStatus]}`);
+
+      if (initialStatus === ChildToParentMessageStatus.EXECUTED) {
+        logger.warn('Message already executed!');
+        withdrawalExecuted = true;
+      } else if (initialStatus === ChildToParentMessageStatus.CONFIRMED) {
+        // Execute the withdrawal immediately
+        logger.info('Message is CONFIRMED. Executing withdrawal transaction...');
+        const executeTransaction = await childToParentMessage.execute(childChainProvider);
+        const executeReceipt = await executeTransaction.wait();
+
+        withdrawalExecuted = true;
+        withdrawalTxHash = executeReceipt.transactionHash as Hash;
+        logger.txHash(withdrawalTxHash, 'executeTransaction', 'success');
+        logger.event('Withdrawal executed successfully on L1!');
+
+        // Check Hacker's balance on L1
+        const hackerL1Balance = await parentClient.getBalance({ address: hackerAddress });
+        logger.success(`Hacker's L1 balance: ${formatEther(hackerL1Balance)} ETH`);
+      } else {
+        // Status is UNCONFIRMED - poll until the message becomes CONFIRMED or EXECUTED
+        // Monitor is already showing assertion progress in the background
+        logger.warn(`Message not yet confirmed (status: ${ChildToParentMessageStatus[initialStatus]})`);
+        logger.info('Polling for outbox entry every 30s (max 10 min)...');
+        logger.info('(Monitor is showing assertion progress in the background)');
+
+        const pollIntervalMs = 30_000; // 30 seconds
+        const maxPollAttempts = 20; // 20 * 30s = 10 min max
+        let pollAttempt = 0;
+        let messageReady = false;
+
+        while (pollAttempt < maxPollAttempts && !messageReady) {
+          await cancellableSleep(pollIntervalMs, ctx?.signal);
+          pollAttempt++;
+
+          try {
+            const currentStatus = await childToParentMessage.status(childChainProvider);
+            const statusName = ChildToParentMessageStatus[currentStatus];
+            const elapsed = pollAttempt * 30;
+            logger.info(`[Poll ${pollAttempt}/${maxPollAttempts}] Message status: ${statusName} (${elapsed}s elapsed)`);
+
+            if (currentStatus === ChildToParentMessageStatus.CONFIRMED) {
+              messageReady = true;
+              logger.success('Outbox entry exists! Executing now...');
+
+              const executeTransaction = await childToParentMessage.execute(childChainProvider);
+              const executeReceipt = await executeTransaction.wait();
+
+              withdrawalExecuted = true;
+              withdrawalTxHash = executeReceipt.transactionHash as Hash;
+              logger.txHash(withdrawalTxHash, 'executeTransaction', 'success');
+              logger.event('Withdrawal executed successfully on L1!');
+
+              // Check B's balance on L1
+              const hackerL1Balance = await parentClient.getBalance({ address: hackerAddress });
+              logger.success(`Hacker's L1 balance: ${formatEther(hackerL1Balance)} ETH`);
+            } else if (currentStatus === ChildToParentMessageStatus.EXECUTED) {
+              messageReady = true;
+              logger.warn('Message was already executed!');
+              withdrawalExecuted = true;
+            }
+          } catch (pollErr) {
+            const errMsg = pollErr instanceof Error ? pollErr.message : String(pollErr);
+            logger.debug(`Poll error: ${errMsg}`);
+            // Continue polling - transient errors are expected
+          }
+        }
+
+        if (!messageReady) {
+          logger.warn('Timeout: message still not ready after 10 minutes of polling.');
+          logger.raw(
+            '  How to fix: The challenge period may be longer than expected. Try executing the withdrawal manually later.',
+          );
+          withdrawalExecutionError = 'Message not ready for execution within timeout';
+        }
+      }
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      logger.errorWithFix(
+        `Failed to execute withdrawal: ${errorMsg}`,
+        'The withdrawal may need to be executed manually via Outbox.executeTransaction() after the challenge period.',
+      );
+      withdrawalExecutionError = errorMsg;
+    }
+  } else {
+    logger.warn(`confirmPeriodBlocks (${confirmPeriodBlocks}) >= 20, challenge period is long.`);
+    logger.warn('Manual execution on L1 will be required after the challenge period.');
+    logger.info('Monitoring for 60 seconds...');
+    await cancellableSleep(60000, ctx?.signal);
+  }
+
+  return { withdrawalExecuted, withdrawalTxHash, withdrawalExecutionError };
+}
+
 /**
  * Run the malicious mint demo
  *
@@ -247,6 +492,18 @@ export async function runMaliciousMintDemo(
 
   ctx?.onCleanup(async () => tracker.fail('Cancelled'));
 
+  // Reused for every early-exit failure path below.
+  const failureResult: MaliciousMintResult = {
+    mainAddress: '0x0' as Address,
+    hackerAddress: '0x0' as Address,
+    hackerPrivateKey: '0x0' as `0x${string}`,
+    mintAmount: 0n,
+    withdrawAmount: 0n,
+    confirmPeriodBlocks: 0n,
+    bridgeBalanceInitial: 0n,
+    bridgeBalanceFinal: 0n,
+  };
+
   // ========================================================================
   // Step 1: Redeploy Chain
   // ========================================================================
@@ -254,61 +511,10 @@ export async function runMaliciousMintDemo(
   ctx?.stepStarted('Redeploy chain');
   tracker.start();
 
-  // Stop all running nodes before redeployment
-  const existingNodeManager = chainEnv.nodeManager;
-  if (existingNodeManager) {
-    const runningNodes = existingNodeManager.getRunningNodes();
-    if (runningNodes.length > 0) {
-      logger.info(`Stopping ${runningNodes.length} running node(s)...`);
-      await existingNodeManager.stopAllNodes();
-      logger.success('All nodes stopped.');
-    }
-  }
-
-  logger.info(`Deploying chain with confirmPeriodBlocks=${MALICIOUS_MINT_CONFIRM_PERIOD_BLOCKS}...`);
-  const parentChain = getParentChain();
-  const deploySuccess = await deployChain(parentChain, ctx, {
-    confirmPeriodBlocks: MALICIOUS_MINT_CONFIRM_PERIOD_BLOCKS,
-    skipPrompts: true,
-  });
-
-  if (!deploySuccess) {
+  if (!(await redeployFreshChain(MALICIOUS_MINT_CONFIRM_PERIOD_BLOCKS, ctx))) {
     tracker.fail();
-    logger.errorWithFix('Chain deployment failed.', 'Check PARENT_CHAIN_RPC and MAIN_PRIVATE_KEY in .env file.');
-    return {
-      mainAddress: '0x0' as Address,
-      hackerAddress: '0x0' as Address,
-      hackerPrivateKey: '0x0' as `0x${string}`,
-      mintAmount: 0n,
-      withdrawAmount: 0n,
-      confirmPeriodBlocks: 0n,
-      bridgeBalanceInitial: 0n,
-      bridgeBalanceFinal: 0n,
-    };
+    return failureResult;
   }
-
-  // Reload chain env after deployment
-  if (!chainEnv.status.isInitiated()) {
-    if (!chainEnv.load()) {
-      tracker.fail();
-      logger.errorWithFix(
-        'Failed to load chain after deployment.',
-        'Check that node-config.json was created successfully.',
-      );
-      return {
-        mainAddress: '0x0' as Address,
-        hackerAddress: '0x0' as Address,
-        hackerPrivateKey: '0x0' as `0x${string}`,
-        mintAmount: 0n,
-        withdrawAmount: 0n,
-        confirmPeriodBlocks: 0n,
-        bridgeBalanceInitial: 0n,
-        bridgeBalanceFinal: 0n,
-      };
-    }
-  }
-
-  logger.success('Chain deployed successfully.');
 
   // Apply malicious mint config flags to node-config.json before starting
   // (fast-validator, fast-batch-poster, ignore-rollup-wasm-module-root, block-validator with local WASM)
@@ -333,16 +539,7 @@ export async function runMaliciousMintDemo(
       'NodeManager not available after deployment.',
       'This should not happen. Check deployment logs.',
     );
-    return {
-      mainAddress: '0x0' as Address,
-      hackerAddress: '0x0' as Address,
-      hackerPrivateKey: '0x0' as `0x${string}`,
-      mintAmount: 0n,
-      withdrawAmount: 0n,
-      confirmPeriodBlocks: 0n,
-      bridgeBalanceInitial: 0n,
-      bridgeBalanceFinal: 0n,
-    };
+    return failureResult;
   }
 
   logger.info('Starting node (malicious ArbMinter image)...');
@@ -353,16 +550,7 @@ export async function runMaliciousMintDemo(
       'Failed to start node.',
       'Ensure Docker is running (`docker info`) and check Docker logs for details.',
     );
-    return {
-      mainAddress: '0x0' as Address,
-      hackerAddress: '0x0' as Address,
-      hackerPrivateKey: '0x0' as `0x${string}`,
-      mintAmount: 0n,
-      withdrawAmount: 0n,
-      confirmPeriodBlocks: 0n,
-      bridgeBalanceInitial: 0n,
-      bridgeBalanceFinal: 0n,
-    };
+    return failureResult;
   }
   ctx?.onCleanup(async () => {
     logger.info('Stopping node...');
@@ -621,96 +809,7 @@ export async function runMaliciousMintDemo(
   logger.txHash(withdrawTx, 'withdrawEth', 'success');
   logger.success('Withdrawal TX confirmed on L2');
 
-  // Parse L2ToL1Tx event and extract data for later execution
-  // Note: ArbSys emits multiple events (L2ToL1Tx, SendMerkleUpdate, etc.)
-  // We need to find the specific L2ToL1Tx event by trying to decode each log
-  // L2ToL1Tx event data for executing withdrawal on L1
-  let l2ToL1TxData: {
-    caller: Address;
-    destination: Address;
-    hash: bigint;
-    position: bigint;
-    arbBlockNum: bigint;
-    ethBlockNum: bigint;
-    timestamp: bigint;
-    callvalue: bigint;
-    data: `0x${string}`;
-  } | null = null;
-
-  // Find and decode L2ToL1Tx event from all logs emitted by ArbSys
-  const arbSysLogs = withdrawReceipt.logs.filter((log) => log.address.toLowerCase() === ARB_SYS_ADDRESS.toLowerCase());
-
-  for (const log of arbSysLogs) {
-    try {
-      // Use arbSysAbi (the complete ABI from SDK) to decode events
-      const decoded = decodeEventLog({
-        abi: arbSysAbi,
-        data: log.data,
-        topics: log.topics,
-      });
-      if (decoded.eventName === 'L2ToL1Tx') {
-        logger.success('L2ToL1Tx event detected');
-        // Type assertion needed because viem's decodeEventLog returns union type
-        const args = decoded.args as {
-          caller: Address;
-          destination: Address;
-          hash: bigint;
-          position: bigint;
-          arbBlockNum: bigint;
-          ethBlockNum: bigint;
-          timestamp: bigint;
-          callvalue: bigint;
-          data: `0x${string}`;
-        };
-        l2ToL1TxData = {
-          caller: args.caller,
-          destination: args.destination,
-          hash: args.hash,
-          position: args.position,
-          arbBlockNum: args.arbBlockNum,
-          ethBlockNum: args.ethBlockNum,
-          timestamp: args.timestamp,
-          callvalue: args.callvalue,
-          data: args.data,
-        };
-        logger.info(`  Position (index): ${l2ToL1TxData.position}`);
-        logger.info(`  L2 Block: ${l2ToL1TxData.arbBlockNum}`);
-        logger.info(`  Value: ${formatEther(l2ToL1TxData.callvalue)} ETH`);
-        break; // Found the L2ToL1Tx event, stop searching
-      }
-    } catch {
-      // This log is not L2ToL1Tx, continue to next log
-      continue;
-    }
-  }
-
-  if (!l2ToL1TxData) {
-    logger.warn('L2ToL1Tx event not found in logs');
-    logger.info(`  Total logs from ArbSys: ${arbSysLogs.length}`);
-  } else {
-    // Best-effort: fetch Arbitrum-specific sendRoot/sendCount from the withdrawal block.
-    // This helps us later correlate the outgoing message position to the rollup assertion sendRoot.
-    try {
-      const request = (childClient as any).request ?? (childClient as any).transport?.request;
-      if (request) {
-        const blockNumberHex = `0x${l2ToL1TxData.arbBlockNum.toString(16)}`;
-        const block = await request({
-          method: 'eth_getBlockByNumber',
-          params: [blockNumberHex, false],
-        });
-        const sendRoot = (block as any)?.sendRoot as string | undefined;
-        const sendCount = (block as any)?.sendCount as string | undefined;
-        if (sendRoot && sendCount) {
-          const sendRootNorm = normalizeBytes32Like(sendRoot);
-          const sendCountBi = BigInt(sendCount);
-          logger.info(`  L2 block sendRoot: ${sendRootNorm}`);
-          logger.info(`  L2 block sendCount: ${sendCountBi} (message position: ${l2ToL1TxData.position})`);
-        }
-      }
-    } catch {
-      // Ignore - not all nodes expose Arbitrum-specific block fields
-    }
-  }
+  const l2ToL1TxData = await parseL2ToL1TxData(withdrawReceipt, childClient);
 
   ctx?.stepCompleted('Hacker withdrawing via ArbSys');
 
@@ -748,134 +847,15 @@ export async function runMaliciousMintDemo(
   ctx?.stepStarted('Waiting for withdrawal readiness');
   tracker.start();
 
-  // Track withdrawal execution status
-  let withdrawalExecuted = false;
-  let withdrawalExecutionError: string | null = null;
-  let withdrawalTxHash: Hash | null = null;
-
-  if (confirmPeriodBlocks < BigInt(20)) {
-    logger.info('confirmPeriodBlocks < 20, polling for withdrawal message status...');
-
-    // Ensure custom network is registered with the SDK
-    ensureCustomNetworkRegistered(envConfig.chainId, envConfig.parentChainId, coreContracts);
-
-    // Execute withdrawal on L1 using @arbitrum/sdk
-    logger.info('Preparing to execute withdrawal on L1 using Arbitrum SDK...');
-
-    try {
-      // Create ethers providers for SDK
-      const parentChainProvider = new providers.JsonRpcProvider(envConfig.parentChainRpc);
-      const childChainProvider = new providers.JsonRpcProvider(envConfig.chainRpc);
-
-      // Create wallet for B using ethers
-      const parentWalletHacker = new Wallet(hackerPrivateKey, parentChainProvider);
-
-      // Get the withdrawal transaction receipt and wrap it with SDK
-      const receipt = await childChainProvider.getTransactionReceipt(withdrawTx);
-      const childTransactionReceipt = new ChildTransactionReceipt(receipt);
-
-      // Get child-to-parent messages from the receipt
-      const messages = await childTransactionReceipt.getChildToParentMessages(parentWalletHacker);
-
-      if (messages.length === 0) {
-        throw new Error('No child-to-parent messages found in transaction');
-      }
-
-      const childToParentMessage = messages[0];
-      logger.info(`Found ${messages.length} child-to-parent message(s)`);
-
-      // Check initial message status
-      const initialStatus = await childToParentMessage.status(childChainProvider);
-      logger.info(`Initial message status: ${ChildToParentMessageStatus[initialStatus]}`);
-
-      if (initialStatus === ChildToParentMessageStatus.EXECUTED) {
-        logger.warn('Message already executed!');
-        withdrawalExecuted = true;
-      } else if (initialStatus === ChildToParentMessageStatus.CONFIRMED) {
-        // Execute the withdrawal immediately
-        logger.info('Message is CONFIRMED. Executing withdrawal transaction...');
-        const executeTransaction = await childToParentMessage.execute(childChainProvider);
-        const executeReceipt = await executeTransaction.wait();
-
-        withdrawalExecuted = true;
-        withdrawalTxHash = executeReceipt.transactionHash as Hash;
-        logger.txHash(withdrawalTxHash, 'executeTransaction', 'success');
-        logger.event('Withdrawal executed successfully on L1!');
-
-        // Check Hacker's balance on L1
-        const hackerL1Balance = await parentClient.getBalance({ address: hackerAccount.address });
-        logger.success(`Hacker's L1 balance: ${formatEther(hackerL1Balance)} ETH`);
-      } else {
-        // Status is UNCONFIRMED - poll until the message becomes CONFIRMED or EXECUTED
-        // Monitor is already showing assertion progress in the background
-        logger.warn(`Message not yet confirmed (status: ${ChildToParentMessageStatus[initialStatus]})`);
-        logger.info('Polling for outbox entry every 30s (max 10 min)...');
-        logger.info('(Monitor is showing assertion progress in the background)');
-
-        const pollIntervalMs = 30_000; // 30 seconds
-        const maxPollAttempts = 20; // 20 * 30s = 10 min max
-        let pollAttempt = 0;
-        let messageReady = false;
-
-        while (pollAttempt < maxPollAttempts && !messageReady) {
-          await cancellableSleep(pollIntervalMs, ctx?.signal);
-          pollAttempt++;
-
-          try {
-            const currentStatus = await childToParentMessage.status(childChainProvider);
-            const statusName = ChildToParentMessageStatus[currentStatus];
-            const elapsed = pollAttempt * 30;
-            logger.info(`[Poll ${pollAttempt}/${maxPollAttempts}] Message status: ${statusName} (${elapsed}s elapsed)`);
-
-            if (currentStatus === ChildToParentMessageStatus.CONFIRMED) {
-              messageReady = true;
-              logger.success('Outbox entry exists! Executing now...');
-
-              const executeTransaction = await childToParentMessage.execute(childChainProvider);
-              const executeReceipt = await executeTransaction.wait();
-
-              withdrawalExecuted = true;
-              withdrawalTxHash = executeReceipt.transactionHash as Hash;
-              logger.txHash(withdrawalTxHash, 'executeTransaction', 'success');
-              logger.event('Withdrawal executed successfully on L1!');
-
-              // Check B's balance on L1
-              const hackerL1Balance = await parentClient.getBalance({ address: hackerAccount.address });
-              logger.success(`Hacker's L1 balance: ${formatEther(hackerL1Balance)} ETH`);
-            } else if (currentStatus === ChildToParentMessageStatus.EXECUTED) {
-              messageReady = true;
-              logger.warn('Message was already executed!');
-              withdrawalExecuted = true;
-            }
-          } catch (pollErr) {
-            const errMsg = pollErr instanceof Error ? pollErr.message : String(pollErr);
-            logger.debug(`Poll error: ${errMsg}`);
-            // Continue polling - transient errors are expected
-          }
-        }
-
-        if (!messageReady) {
-          logger.warn('Timeout: message still not ready after 10 minutes of polling.');
-          logger.raw(
-            '  How to fix: The challenge period may be longer than expected. Try executing the withdrawal manually later.',
-          );
-          withdrawalExecutionError = 'Message not ready for execution within timeout';
-        }
-      }
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : String(e);
-      logger.errorWithFix(
-        `Failed to execute withdrawal: ${errorMsg}`,
-        'The withdrawal may need to be executed manually via Outbox.executeTransaction() after the challenge period.',
-      );
-      withdrawalExecutionError = errorMsg;
-    }
-  } else {
-    logger.warn(`confirmPeriodBlocks (${confirmPeriodBlocks}) >= 20, challenge period is long.`);
-    logger.warn('Manual execution on L1 will be required after the challenge period.');
-    logger.info('Monitoring for 60 seconds...');
-    await cancellableSleep(60000, ctx?.signal);
-  }
+  const { withdrawalExecuted, withdrawalTxHash, withdrawalExecutionError } = await executeOrPollWithdrawal({
+    confirmPeriodBlocks,
+    envConfig,
+    hackerPrivateKey,
+    hackerAddress: hackerAccount.address,
+    withdrawTx,
+    parentClient,
+    ctx,
+  });
   ctx?.stepCompleted('Waiting for withdrawal readiness');
 
   // ========================================================================
