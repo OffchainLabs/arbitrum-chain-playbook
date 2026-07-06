@@ -26,7 +26,7 @@ import { NodeType } from '../../types/index.js';
 import { DOCKER_IMAGE, NODE_CONFIG_FILENAME } from '../../types/constants.js';
 import { type OperationContext } from '../../utils/cancellation.js';
 import { StepTracker } from '../../utils/ui.js';
-import { sleep } from './util.js';
+import { sleep, signAndSendRawTx } from './util.js';
 
 import { deployChain } from '../../core/deployChain/deployChain.js';
 import { getParentChain } from '../../utils/parentChain.js';
@@ -565,12 +565,12 @@ async function generateAndFundDemoAccounts(input: FundInput): Promise<DemoAccoun
   // well under a milli-ETH. 0.002 ETH is already ~10-20x headroom per account.
   const ethEach = parseEther('0.002');
   for (const [name, actor] of Object.entries(accounts) as [keyof DemoAccounts, DemoActor][]) {
-    await signAndSend(input.publicClient, input.deployer, { to: actor.account.address, value: ethEach });
+    await signAndSendRawTx(input.publicClient, input.deployer, { to: actor.account.address, value: ethEach });
     logger.info(`funded ${name} (${actor.account.address}) with ${formatEther(ethEach)} ETH`);
   }
   // Auctioneer hot wallet sends ~1 resolve* tx per round (gas only). 0.005 ETH
   // is plenty for the demo's handful of rounds.
-  await signAndSend(input.publicClient, input.deployer, {
+  await signAndSendRawTx(input.publicClient, input.deployer, {
     to: input.auctioneerToFund,
     value: parseEther('0.005'),
   });
@@ -583,33 +583,10 @@ async function generateAndFundDemoAccounts(input: FundInput): Promise<DemoAccoun
       functionName: 'mint',
       args: [actor.account.address, tokenAmount],
     });
-    await signAndSend(input.publicClient, input.deployer, { to: input.biddingToken, data, gas: 300_000n });
+    await signAndSendRawTx(input.publicClient, input.deployer, { to: input.biddingToken, data, gas: 300_000n });
   }
 
   return accounts;
-}
-
-async function signAndSend(
-  pub: ReturnType<typeof createPublicClient>,
-  signer: ReturnType<typeof privateKeyToAccount>,
-  args: { to: Address; value?: bigint; data?: Hex; gas?: bigint },
-): Promise<void> {
-  const nonce = await pub.getTransactionCount({ address: signer.address, blockTag: 'pending' });
-  const gasPrice = await pub.getGasPrice();
-  const chainId = await pub.getChainId();
-  const signed = (await signer.signTransaction({
-    chainId,
-    type: 'eip1559',
-    to: args.to,
-    value: args.value ?? 0n,
-    data: args.data ?? '0x',
-    gas: args.gas ?? 100_000n,
-    maxFeePerGas: gasPrice * 2n,
-    maxPriorityFeePerGas: gasPrice,
-    nonce,
-  })) as Hex;
-  const txHash = await pub.sendRawTransaction({ serializedTransaction: signed });
-  await pub.waitForTransactionReceipt({ hash: txHash });
 }
 
 async function ensureMainNode(

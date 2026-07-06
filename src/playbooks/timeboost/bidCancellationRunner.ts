@@ -16,7 +16,13 @@ import { type Address, type Hex, type PublicClient } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { submitBid } from './bidder.js';
 import { expressLaneAuctionArtifact } from './abis.js';
-import { snapshotRound, formatRoundLine, waitUntilRound, type RoundTiming } from './roundClock.js';
+import {
+  formatRoundLine,
+  snapshotRound,
+  waitUntilRound,
+  waitForBiddingWindow,
+  type RoundTiming,
+} from './roundClock.js';
 import { TimeboostRpcError } from './expressLaneRunner.js';
 import type { AuctionEvent, BidCancellationRecord } from './types.js';
 import { log, sleep } from './util.js';
@@ -67,7 +73,8 @@ export async function runBidCancellationRound(
   const rivalAmount = input.rivalAmount > cancelledToAmount ? input.rivalAmount : cancelledToAmount + 1n;
   const originalAmount = input.originalAmount > rivalAmount ? input.originalAmount : rivalAmount + 1n;
 
-  await waitForBiddingWindow(input.timing);
+  // >3s headroom — this round fires several sequential bids.
+  await waitForBiddingWindow(input.timing, 3);
   const snap = snapshotRound(input.timing);
   const bidForRound = BigInt(snap.current + 1);
   log.section(`Bid-cancellation round — bidding for round ${bidForRound}`);
@@ -161,15 +168,6 @@ async function probeBidCap(bid: () => Promise<unknown>): Promise<NonNullable<Bid
   }
   log.warn('per-round bid cap not reached within 6 attempts');
   return { attempted, accepted, rejected: false };
-}
-
-/** Like auctionRunner's wait, but with >3s headroom — this round fires several sequential bids. */
-async function waitForBiddingWindow(timing: RoundTiming): Promise<void> {
-  for (;;) {
-    const snap = snapshotRound(timing);
-    if (!snap.insideAuctionClosingWindow && snap.secondsToAuctionClose > 3) return;
-    await sleep(Math.min(2000, snap.secondsToNextRound * 1000 + 100));
-  }
 }
 
 function findEvent(events: AuctionEvent[], kind: AuctionEvent['kind'], round: bigint): AuctionEvent | undefined {

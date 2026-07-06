@@ -1,12 +1,61 @@
 import inquirer from 'inquirer';
+import path from 'path';
 import logger from '../../utils/logger.js';
-import { applyOverwriteToNodeConfig, OVERWRITE_OPTIONS, OverwriteOption } from '../deployChain/prepareNodeConfig.js';
 import { readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { NODE_CONFIG_FILENAME } from '../../types/constants.js';
 import { NodeConfig } from '@arbitrum/chain-sdk';
 import { breadcrumb } from '../../utils/breadcrumb.js';
 import chalk from 'chalk';
+import {
+  overwriteToNodeConfigForFastValidator,
+  overwriteToNodeConfigForFastBatchPoster,
+  overwriteToNodeConfigForIncorrectWasmValidator,
+  overwriteToNodeConfigForMaliciousValidator,
+  overwriteToNodeConfigForMaliciousMint,
+  overwriteToNodeConfigForDeletingBoldStrategy,
+} from '../../utils/nodeConfigUtils.js';
+
+// Overwrite options type
+export type OverwriteOption =
+  | 'fast-validator'
+  | 'fast-batch-poster'
+  | 'incorrect-wasm-validator'
+  | 'malicious-validator'
+  | 'malicious-mint'
+  | 'deleting-bold-strategy';
+
+// Overwrite option labels
+export const OVERWRITE_OPTIONS: Record<OverwriteOption, string> = {
+  'fast-validator': 'Fast Validator',
+  'fast-batch-poster': 'Fast Batch Poster',
+  'incorrect-wasm-validator': 'Incorrect Wasm Validator',
+  'malicious-validator': 'Malicious Validator',
+  'malicious-mint': 'Malicious Mint (BlockValidator + local WASM)',
+  'deleting-bold-strategy': 'Deleting Bold Strategy (For old SDK generated node config)',
+};
+
+/**
+ * Apply overwrite function to node config based on option
+ */
+export function applyOverwriteToNodeConfig(nodeConfig: NodeConfig, option: OverwriteOption): NodeConfig {
+  switch (option) {
+    case 'fast-validator':
+      return overwriteToNodeConfigForFastValidator(nodeConfig);
+    case 'fast-batch-poster':
+      return overwriteToNodeConfigForFastBatchPoster(nodeConfig);
+    case 'incorrect-wasm-validator':
+      return overwriteToNodeConfigForIncorrectWasmValidator(nodeConfig);
+    case 'malicious-validator':
+      return overwriteToNodeConfigForMaliciousValidator(nodeConfig);
+    case 'malicious-mint':
+      return overwriteToNodeConfigForMaliciousMint(nodeConfig);
+    case 'deleting-bold-strategy':
+      return overwriteToNodeConfigForDeletingBoldStrategy(nodeConfig);
+    default:
+      return nodeConfig;
+  }
+}
 
 /**
  * Node Config Operations Module
@@ -170,18 +219,10 @@ export class NodeConfigOperations {
    */
   private async appendWSConfigToNodeFile(): Promise<void> {
     try {
-      const fs = await import('fs/promises');
-      const path = await import('path');
-      const { NODE_CONFIG_FILENAME } = await import('../../types/constants.js');
-
       const configPath = path.join(process.cwd(), NODE_CONFIG_FILENAME);
 
       // Check if file exists
-      const fileExists = await fs
-        .access(configPath)
-        .then(() => true)
-        .catch(() => false);
-      if (!fileExists) {
+      if (!existsSync(configPath)) {
         logger.errorWithFix(
           `Node config file not found: ${configPath}`,
           'Deploy a chain first (Main Menu > Deploy Chain) to generate the config file.',
@@ -190,7 +231,7 @@ export class NodeConfigOperations {
       }
 
       // Read existing config
-      const fileContent = await fs.readFile(configPath, 'utf-8');
+      const fileContent = await readFile(configPath, 'utf-8');
       const config = JSON.parse(fileContent);
 
       // Get the HTTP port to calculate WS port
@@ -205,7 +246,7 @@ export class NodeConfigOperations {
       };
 
       // Write back to file
-      await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+      await writeFile(configPath, JSON.stringify(config, null, 2));
       logger.success(`Successfully added WebSocket configuration to node-config.json (WS port: ${wsPort})`);
     } catch (error) {
       logger.errorWithFix(
@@ -224,18 +265,10 @@ export class NodeConfigOperations {
     const DEFAULT_FEED_PORT = 9642;
 
     try {
-      const fs = await import('fs/promises');
-      const path = await import('path');
-      const { NODE_CONFIG_FILENAME } = await import('../../types/constants.js');
-
       const configPath = path.join(process.cwd(), NODE_CONFIG_FILENAME);
 
       // Check if file exists
-      const fileExists = await fs
-        .access(configPath)
-        .then(() => true)
-        .catch(() => false);
-      if (!fileExists) {
+      if (!existsSync(configPath)) {
         logger.errorWithFix(
           `Node config file not found: ${configPath}`,
           'Deploy a chain first (Main Menu > Deploy Chain) to generate the config file.',
@@ -244,7 +277,7 @@ export class NodeConfigOperations {
       }
 
       // Read existing config
-      const fileContent = await fs.readFile(configPath, 'utf-8');
+      const fileContent = await readFile(configPath, 'utf-8');
       const config = JSON.parse(fileContent);
 
       // Ensure node object exists
@@ -265,7 +298,7 @@ export class NodeConfigOperations {
       };
 
       // Write back to file
-      await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+      await writeFile(configPath, JSON.stringify(config, null, 2));
       logger.success(
         `Successfully added Feed Output configuration to node-config.json (Feed port: ${DEFAULT_FEED_PORT})`,
       );

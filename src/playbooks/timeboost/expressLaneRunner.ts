@@ -19,6 +19,7 @@ import {
 } from 'viem';
 import { DONT_CARE_SEQUENCE, type JsonExpressLaneSubmission } from './types.js';
 import { signExpressLaneSubmission } from './expressLaneSigner.js';
+import { signRawTx } from './util.js';
 
 /**
  * Minimal logger surface so Phase 6 modules don't have to import the
@@ -85,26 +86,10 @@ export async function submitExpressLaneTransaction(input: ExpressLaneSubmitInput
     label = 'express',
   } = input;
 
-  // 1. Read the controller's pending nonce + current gas price for a clean tx envelope.
-  const nonce = await childClient.getTransactionCount({
-    address: controllerAccount.address,
-    blockTag: 'pending',
-  });
-  const gasPrice = await childClient.getGasPrice();
-
-  // 2. Sign a plain EIP-1559 tx with the controller's key. This produces the RLP that
-  //    Nitro will broadcast — the express-lane envelope only wraps it for delivery.
-  const rlpTx = (await controllerAccount.signTransaction({
-    chainId,
-    type: 'eip1559',
-    to,
-    value: parseEther(valueEth),
-    gas: 100_000n,
-    maxFeePerGas: gasPrice * 2n,
-    maxPriorityFeePerGas: gasPrice,
-    nonce,
-    data: '0x',
-  })) as Hex;
+  // 1-2. Sign a plain EIP-1559 tx with the controller's key (pending nonce, 2x gas
+  //    price). This produces the RLP that Nitro will broadcast — the express-lane
+  //    envelope only wraps it for delivery.
+  const rlpTx = await signRawTx(childClient, controllerAccount, { to, value: parseEther(valueEth), chainId });
 
   const txHash = keccak256(rlpTx);
 

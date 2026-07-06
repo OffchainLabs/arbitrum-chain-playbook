@@ -25,7 +25,6 @@ import { providers, Wallet } from 'ethers';
 import { ChildTransactionReceipt, ChildToParentMessageStatus } from '@arbitrum/sdk';
 import type { CoreContracts } from '@arbitrum/chain-sdk';
 import { ChainEnv } from '../../state/chainEnv/index.js';
-import { SendersEnv, SenderRole } from '../../state/sendersEnv/index.js';
 import { NodeType } from '../../types/index.js';
 import {
   NODE_CONFIG_FILENAME,
@@ -37,7 +36,7 @@ import logger from '../../utils/logger.js';
 import { overwriteNodeConfigFile } from '../../core/nodeConfig/nodeConfigOperations.js';
 import { StepTracker } from '../../utils/ui.js';
 import { type OperationContext, cancellableSleep } from '../../utils/cancellation.js';
-import { redeployFreshChain } from '../runnerKit.js';
+import { getMainSenderPrivateKey, getParentChainRpcUrl, redeployFreshChain } from '../runnerKit.js';
 import { inboxAbi, arbMinterAbi, arbSysAbi, rollupCoreAbi } from './abis.js';
 import { type MaliciousMintConfig, type MaliciousMintResult, ARB_SYS_ADDRESS, ARB_MINTER_ADDRESS } from './types.js';
 import { startRollupMonitor, stopRollupMonitor } from './monitor.js';
@@ -82,7 +81,6 @@ function getEnvConfig(): {
   parentChainId: number;
 } {
   const chainEnv = ChainEnv.getInstance();
-  const sendersEnv = SendersEnv.getInstance();
 
   // Get chain config
   const chainConfig = chainEnv.chainConfig.get();
@@ -96,15 +94,8 @@ function getEnvConfig(): {
     throw new Error('Core contracts not available. Please deploy a chain first.');
   }
 
-  // Get main sender account
-  const mainSenders = sendersEnv.getAllByRole(SenderRole.RegularSender);
-  if (mainSenders.length === 0) {
-    throw new Error('No RegularSender account found. Please add a sender account first.');
-  }
-  const mainSender = mainSenders[0];
-
-  // Get parent chain RPC URL
-  const parentChainRpc = process.env.PARENT_CHAIN_RPC || 'https://sepolia-rollup.arbitrum.io/rpc';
+  const mainPrivateKey = getMainSenderPrivateKey();
+  const parentChainRpc = getParentChainRpcUrl();
 
   // Get chain RPC URL from running node
   // Note: The port in config file is the container's internal port.
@@ -125,13 +116,12 @@ function getEnvConfig(): {
   }
 
   return {
-    mainPrivateKey: mainSender.privateKey,
+    mainPrivateKey,
     parentChainRpc,
     chainRpc,
     coreContracts: coreContracts as CoreContracts,
     chainId: chainConfig.chainId,
-    // Arbitrum Sepolia chainId = 421614
-    parentChainId: 421614,
+    parentChainId: getParentChain().id,
   };
 }
 

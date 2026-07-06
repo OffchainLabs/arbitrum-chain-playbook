@@ -39,7 +39,7 @@ import {
 import logger from '../../utils/logger.js';
 import { StepTracker } from '../../utils/ui.js';
 import { type OperationContext, cancellableSleep } from '../../utils/cancellation.js';
-import { redeployFreshChain } from '../runnerKit.js';
+import { getMainSenderPrivateKey, getParentChainRpcUrl, redeployFreshChain } from '../runnerKit.js';
 import {
   overwriteToNodeConfigForMainNode,
   overwriteToNodeConfigForMaliciousValidator,
@@ -84,14 +84,9 @@ function getEnvConfig(): {
   mainPrivateKey: `0x${string}`;
   parentChainRpc: string;
 } {
-  const sendersEnv = SendersEnv.getInstance();
-  const mainSenders = sendersEnv.getAllByRole(SenderRole.RegularSender);
-  if (mainSenders.length === 0) {
-    throw new Error('No RegularSender account found. Please add a sender account first.');
-  }
   return {
-    mainPrivateKey: mainSenders[0].privateKey,
-    parentChainRpc: process.env.PARENT_CHAIN_RPC || 'https://sepolia-rollup.arbitrum.io/rpc',
+    mainPrivateKey: getMainSenderPrivateKey(),
+    parentChainRpc: getParentChainRpcUrl(),
   };
 }
 

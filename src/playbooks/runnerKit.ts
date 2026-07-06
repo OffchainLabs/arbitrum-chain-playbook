@@ -7,11 +7,37 @@
  */
 
 import { ChainEnv } from '../state/chainEnv/index.js';
+import { SendersEnv, SenderRole } from '../state/sendersEnv/index.js';
 import { NodeManagerLike } from '../types/index.js';
 import logger from '../utils/logger.js';
 import { type OperationContext } from '../utils/cancellation.js';
 import { getParentChain } from '../utils/parentChain.js';
 import { deployChain } from '../core/deployChain/deployChain.js';
+
+/**
+ * Get the main sender's (RegularSender) private key, or throw with an
+ * actionable message when none is registered.
+ */
+export function getMainSenderPrivateKey(): `0x${string}` {
+  const senders = SendersEnv.getInstance().getAllByRole(SenderRole.RegularSender);
+  if (senders.length === 0) {
+    throw new Error('No RegularSender account found. Please add a sender account first.');
+  }
+  return senders[0].privateKey;
+}
+
+/**
+ * Get the parent chain RPC URL from the environment. Runners must not fall
+ * back to a hardcoded public network — failing fast beats silently talking
+ * to the wrong chain.
+ */
+export function getParentChainRpcUrl(): string {
+  const url = process.env.PARENT_CHAIN_RPC;
+  if (!url) {
+    throw new Error('PARENT_CHAIN_RPC is not set. Add it to your .env file.');
+  }
+  return url;
+}
 
 /**
  * Stop every running node, if any. No-op when the node manager is absent or

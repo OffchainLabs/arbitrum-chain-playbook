@@ -30,7 +30,7 @@ import {
 import { sign as signRawHash, signatureToHex, privateKeyToAccount } from 'viem/accounts';
 import { ierc20Abi, expressLaneAuctionArtifact } from './abis.js';
 import { rawRpcCall, TimeboostRpcError } from './expressLaneRunner.js';
-import { log } from './util.js';
+import { log, signAndSendRawTx } from './util.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -217,24 +217,11 @@ async function sendCall(
   to: Address,
   data: Hex,
 ): Promise<Hash> {
-  const nonce = await publicClient.getTransactionCount({ address: signer.address, blockTag: 'pending' });
-  const gasPrice = await publicClient.getGasPrice();
-  const chainId = await publicClient.getChainId();
-
-  const signed = (await signer.signTransaction({
-    chainId,
-    type: 'eip1559',
-    to,
-    value: 0n,
-    data,
-    gas: 500_000n,
-    maxFeePerGas: gasPrice * 2n,
-    maxPriorityFeePerGas: gasPrice,
-    nonce,
-  })) as Hex;
-
-  const txHash = await publicClient.sendRawTransaction({ serializedTransaction: signed });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-  if (receipt.status !== 'success') throw new Error(`Tx ${txHash} reverted`);
+  const { txHash } = await signAndSendRawTx(
+    publicClient,
+    signer,
+    { to, data, gas: 500_000n },
+    { requireSuccess: true },
+  );
   return txHash;
 }

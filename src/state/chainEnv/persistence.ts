@@ -5,40 +5,15 @@
  */
 
 import fs from 'fs';
-import path from 'path';
 import { ChainConfig, NodeConfig } from '@arbitrum/chain-sdk';
 import { NodeType } from '../../types/index.js';
 import { CoreContracts, NodeConfigPaths } from './types.js';
-import { discoverNodeConfigs } from '../../utils/nodeConfigUtils.js';
 import {
-  NODE_CONFIG_FILENAME,
-  NODE_CONFIG_MALICIOUS_FILENAME,
-  NODE_CONFIG_HONEST_FILENAME,
-} from '../../types/constants.js';
-
-/**
- * Get the path to the main node config file
- */
-export function getNodeConfigFilePath(): string {
-  return path.join(process.cwd(), NODE_CONFIG_FILENAME);
-}
-
-/**
- * Get the path to node config file for specific node type
- */
-export function getNodeConfigFilePathForType(type: NodeType): string {
-  const basePath = process.cwd();
-  switch (type) {
-    case NodeType.MAIN:
-      return path.join(basePath, NODE_CONFIG_FILENAME);
-    case NodeType.MALICIOUS:
-      return path.join(basePath, NODE_CONFIG_MALICIOUS_FILENAME);
-    case NodeType.HONEST:
-      return path.join(basePath, NODE_CONFIG_HONEST_FILENAME);
-    default:
-      return path.join(basePath, NODE_CONFIG_FILENAME);
-  }
-}
+  discoverNodeConfigs,
+  getNodeConfigPath,
+  getNodeConfigPathForType,
+  createNodeConfigPaths,
+} from '../../utils/nodeConfigUtils.js';
 
 /**
  * Check if node config file exists
@@ -46,22 +21,13 @@ export function getNodeConfigFilePathForType(type: NodeType): string {
  */
 export function nodeConfigFileExists(): boolean {
   // First check the default location
-  if (fs.existsSync(getNodeConfigFilePath())) {
+  if (fs.existsSync(getNodeConfigPath())) {
     return true;
   }
 
   // Use discovery logic to find any available config files
   const discoveredConfigs = discoverNodeConfigs();
   return discoveredConfigs.size > 0;
-}
-
-/**
- * Create default node config paths map
- */
-export function createDefaultNodeConfigPaths(): NodeConfigPaths {
-  const paths = new Map<NodeType, string>();
-  paths.set(NodeType.MAIN, getNodeConfigFilePathForType(NodeType.MAIN));
-  return paths;
 }
 
 /**
@@ -100,7 +66,7 @@ function extractChainConfigFromNodeConfig(nodeConfig: any): ChainConfig | null {
  * Load chain data from disk (node-config.json or discovered config files)
  */
 export function loadChainDataFromDisk(): PersistedData | null {
-  let configPath = getNodeConfigFilePath();
+  let configPath = getNodeConfigPath();
 
   // If the default config file doesn't exist, try to discover others
   if (!fs.existsSync(configPath)) {
@@ -129,7 +95,7 @@ export function loadChainDataFromDisk(): PersistedData | null {
     }
 
     // Create default node config paths
-    const nodeConfigPaths = createDefaultNodeConfigPaths();
+    const nodeConfigPaths = createNodeConfigPaths();
 
     // Use discovery logic to find all available config files
     const discoveredConfigs = discoverNodeConfigs();
@@ -160,7 +126,7 @@ export function loadChainDataFromDisk(): PersistedData | null {
  * Save node config for specific type
  */
 export function saveNodeConfigForType(type: NodeType, nodeConfig: NodeConfig): void {
-  const configPath = getNodeConfigFilePathForType(type);
+  const configPath = getNodeConfigPathForType(type);
 
   try {
     fs.writeFileSync(configPath, JSON.stringify(nodeConfig, null, 2));

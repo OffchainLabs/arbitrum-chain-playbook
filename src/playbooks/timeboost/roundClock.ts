@@ -73,3 +73,18 @@ export async function waitUntilRound(timing: RoundTiming, target: number, signal
     await new Promise((r) => setTimeout(r, sleepMs));
   }
 }
+
+/**
+ * Wait until we are outside the auction-closing window with at least
+ * `headroomSec` seconds before the auction closes, so a bid submitted now
+ * reaches the bid-validator in time. Single-bid flows use the default 1s;
+ * multi-bid flows (e.g. bid cancellation) should pass a larger headroom.
+ */
+export async function waitForBiddingWindow(timing: RoundTiming, headroomSec: number = 1): Promise<void> {
+  for (;;) {
+    const snap = snapshotRound(timing);
+    if (!snap.insideAuctionClosingWindow && snap.secondsToAuctionClose > headroomSec) return;
+    // We're inside (or too close to) the closing window; sleep until the next round opens.
+    await new Promise((r) => setTimeout(r, Math.min(2000, snap.secondsToNextRound * 1000 + 100)));
+  }
+}

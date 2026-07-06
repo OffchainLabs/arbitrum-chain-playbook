@@ -27,11 +27,11 @@ import {
   MINIMUM_ASSERTION_PERIOD,
   L2_DEPOSIT_AMOUNT_ETH,
 } from '../../types/constants.js';
-import type { Abi } from 'viem';
 import { ChainEnv } from '../../state/chainEnv/index.js';
 import { ChainStatus } from '../../state/chainEnv/types.js';
 import { saveNodeConfigForType } from '../../state/chainEnv/persistence.js';
 import { SendersEnv, SenderRole } from '../../state/sendersEnv/index.js';
+import { depositEthToInbox } from '../interactChain/depositToL2.js';
 
 const BASE_STAKE = parseEther(BASE_STAKE_ETH);
 const TEST_TOKENS_AMOUNT = parseEther(TEST_TOKENS_AMOUNT_ETH);
@@ -333,31 +333,13 @@ export async function deployChain(
     ctx?.stepStarted('Depositing ETH to inbox');
     tracker.start();
     const contracts = deployRollupResult.coreContracts;
-    const inboxAbi = [
-      {
-        inputs: [],
-        name: 'depositEth',
-        outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
-        stateMutability: 'payable',
-        type: 'function',
-      },
-    ] as const satisfies Abi;
-
-    const parentWalletClient = createWalletClient({
+    await depositEthToInbox({
       account: deployer,
-      chain: parentChainPublicClient.chain,
-      transport: http(process.env.PARENT_CHAIN_RPC),
+      parentChainPublicClient,
+      parentRpcUrl: process.env.PARENT_CHAIN_RPC!,
+      inboxAddress: contracts.inbox as `0x${string}`,
+      amountEth: L2_DEPOSIT_AMOUNT_ETH,
     });
-    const depositHash = await parentWalletClient.writeContract({
-      address: contracts.inbox as `0x${string}`,
-      abi: inboxAbi,
-      functionName: 'depositEth',
-      value: parseEther(L2_DEPOSIT_AMOUNT_ETH),
-      chain: parentChainPublicClient.chain,
-    });
-
-    await parentChainPublicClient.waitForTransactionReceipt({ hash: depositHash });
-    logger.txHash(depositHash, 'depositEth', 'success');
 
     ctx?.stepCompleted('Depositing ETH to inbox');
     tracker.complete('Chain deployed successfully!');

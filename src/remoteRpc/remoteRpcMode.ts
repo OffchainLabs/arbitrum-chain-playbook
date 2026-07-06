@@ -1,14 +1,10 @@
 import { createPublicClient, http } from 'viem';
 import { getParentChain } from '../utils/parentChain.js';
-import {
-  ChainConfig,
-  CoreContracts,
-  createRollupPrepareTransaction,
-  createRollupPrepareTransactionReceipt,
-} from '@arbitrum/chain-sdk';
+import { ChainConfig, CoreContracts } from '@arbitrum/chain-sdk';
 import { ChainEnv } from '../state/chainEnv/index.js';
 import { OperationMode } from '../types/index.js';
 import logger from '../utils/logger.js';
+import { parseDeploymentTx } from '../utils/deploymentTx.js';
 import { RemoteRpcConfig, setRemoteRpcConfig } from './remoteRpcConfig.js';
 
 function validateEnvVars(): RemoteRpcConfig | null {
@@ -45,21 +41,7 @@ async function loadChainFromRemoteTxHash(
     transport: http(config.parentChainRpc),
   });
 
-  const tx = await parentChainPublicClient.getTransaction({
-    hash: config.deploymentTxHash,
-  });
-
-  const txReceipt = await parentChainPublicClient.getTransactionReceipt({
-    hash: config.deploymentTxHash,
-  });
-
-  const preparedTx = createRollupPrepareTransaction(tx);
-  const preparedReceipt = createRollupPrepareTransactionReceipt(txReceipt);
-
-  const chainConfigRaw = preparedTx.getInputs()[0].config.chainConfig;
-  const chainConfig: ChainConfig = JSON.parse(chainConfigRaw);
-  const coreContracts: CoreContracts = preparedReceipt.getCoreContracts();
-
+  const { chainConfig, coreContracts } = await parseDeploymentTx(parentChainPublicClient, config.deploymentTxHash);
   return { chainConfig, coreContracts };
 }
 

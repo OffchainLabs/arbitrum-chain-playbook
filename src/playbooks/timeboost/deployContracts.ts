@@ -22,6 +22,7 @@ import {
   encodeFunctionData,
 } from 'viem';
 import { expressLaneAuctionArtifact, proxyAdminArtifact, transparentProxyArtifact } from './abis.js';
+import { signAndSendRawTx } from './util.js';
 import { compileMintableERC20 } from './compileBidToken.js';
 
 // ---------------------------------------------------------------------------
@@ -184,31 +185,11 @@ async function sendDeploy(
   deployTxs: Record<string, Hash>,
 ): Promise<Address> {
   const { publicClient, deployer } = input;
-  const nonce = await publicClient.getTransactionCount({
-    address: deployer.address,
-    blockTag: 'pending',
-  });
-  const gasPrice = await publicClient.getGasPrice();
-  const chainId = await publicClient.getChainId();
+  // Conservative gas: the ExpressLaneAuction implementation is sizeable.
+  const { txHash, receipt } = await signAndSendRawTx(publicClient, deployer, { to: null, data, gas: 6_000_000n });
 
-  const signed = (await deployer.signTransaction({
-    chainId,
-    type: 'eip1559',
-    nonce,
-    to: null,
-    value: 0n,
-    data,
-    // Conservative gas: the ExpressLaneAuction implementation is sizeable.
-    gas: 6_000_000n,
-    maxFeePerGas: gasPrice * 2n,
-    maxPriorityFeePerGas: gasPrice,
-  })) as Hex;
-
-  const txHash = await publicClient.sendRawTransaction({ serializedTransaction: signed });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-
-  if (receipt.status !== 'success' || !receipt.contractAddress) {
-    throw new Error(`Deploy ${txKey} failed: status=${receipt.status} txHash=${txHash}`);
+  if (receipt?.status !== 'success' || !receipt.contractAddress) {
+    throw new Error(`Deploy ${txKey} failed: status=${receipt?.status} txHash=${txHash}`);
   }
 
   deployTxs[txKey] = txHash;

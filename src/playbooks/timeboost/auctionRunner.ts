@@ -21,7 +21,13 @@
 import { type Address, type Hex, type PublicClient } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { approveAndDeposit, submitBid, type SubmittedBid } from './bidder.js';
-import { snapshotRound, formatRoundLine, waitUntilRound, type RoundTiming } from './roundClock.js';
+import {
+  snapshotRound,
+  formatRoundLine,
+  waitUntilRound,
+  waitForBiddingWindow,
+  type RoundTiming,
+} from './roundClock.js';
 import type { AuctionEvent } from './types.js';
 import { log, sleep } from './util.js';
 
@@ -148,22 +154,4 @@ export async function runOneAuction(input: RunOneAuctionInput, events: AuctionEv
   else log.warn(`SetExpressLaneController for round ${bidForRound} not observed yet.`);
 
   return { bidForRound: Number(bidForRound), bids, resolvedAt, controllerSetAt };
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-async function waitForBiddingWindow(timing: RoundTiming): Promise<void> {
-  for (;;) {
-    const snap = snapshotRound(timing);
-    if (!snap.insideAuctionClosingWindow && snap.secondsToAuctionClose > 1) {
-      // Need at least 1s of headroom so the bid arrives before the auctioneer
-      // closes the bidding window. This is a coarse guard; production code
-      // should compute the validator's expected submission latency.
-      return;
-    }
-    // We're inside the closing window; sleep until the next round opens.
-    await sleep(Math.min(2000, snap.secondsToNextRound * 1000 + 100));
-  }
 }

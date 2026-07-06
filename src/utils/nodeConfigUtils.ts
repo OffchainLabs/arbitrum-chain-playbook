@@ -1,12 +1,5 @@
 import { Chain, PublicClient } from 'viem';
-import {
-  ChainConfig,
-  NodeConfig,
-  PrepareNodeConfigParams,
-  createRollupPrepareTransaction,
-  createRollupPrepareTransactionReceipt,
-  prepareNodeConfig,
-} from '@arbitrum/chain-sdk';
+import { NodeConfig, PrepareNodeConfigParams, prepareNodeConfig } from '@arbitrum/chain-sdk';
 import { config } from 'dotenv';
 import path from 'path';
 import fs from 'fs';
@@ -18,7 +11,11 @@ import {
   DEFAULT_CHAIN_NAME,
 } from '../types/constants.js';
 import { SenderAccount, SenderRole } from '../state/sendersEnv/index.js';
+import { parseDeploymentTx } from './deploymentTx.js';
 config();
+
+// Get base config file path (MAIN type)
+export const getNodeConfigPath = (): string => path.join(process.cwd(), NODE_CONFIG_FILENAME);
 
 // Get config file path for specific NodeType
 export const getNodeConfigPathForType = (type: NodeType): string => {
@@ -36,7 +33,7 @@ export const getNodeConfigPathForType = (type: NodeType): string => {
 };
 
 // Initialize nodeConfigPaths Map with MAIN type by default
-const createNodeConfigPaths = (): Map<NodeType, string> => {
+export const createNodeConfigPaths = (): Map<NodeType, string> => {
   const paths = new Map<NodeType, string>();
   paths.set(NodeType.MAIN, getNodeConfigPathForType(NodeType.MAIN));
   return paths;
@@ -143,19 +140,8 @@ export async function generateNodeConfiguration(
     .filter((account) => account.role === SenderRole.BatchPoster)
     .map((account) => account.privateKey);
 
-  // get the transaction
-  const tx = createRollupPrepareTransaction(await parentChainPublicClient.getTransaction({ hash: txHash }));
-
-  // get the transaction receipt
-  const txReceipt = createRollupPrepareTransactionReceipt(
-    await parentChainPublicClient.getTransactionReceipt({ hash: txHash }),
-  );
-
-  const txConfig = tx.getInputs()[0].config;
-  // get the chain config from the transaction inputs
-  const chainConfig: ChainConfig = JSON.parse(txConfig.chainConfig);
-  // get the core contracts from the transaction receipt
-  const coreContracts = txReceipt.getCoreContracts();
+  // Decode the deployment transaction (chainConfig, coreContracts, stakeToken)
+  const { chainConfig, coreContracts, rollupConfig } = await parseDeploymentTx(parentChainPublicClient, txHash);
 
   // prepare the node config
   // Use provided parentChainRpcUrl, or fallback to chain's default RPC
@@ -165,7 +151,7 @@ export async function generateNodeConfiguration(
     coreContracts,
     batchPosterPrivateKey: batchPosterPrivateKeys[0],
     validatorPrivateKey: validatorPrivateKeys[0],
-    stakeToken: txConfig.stakeToken,
+    stakeToken: rollupConfig.stakeToken,
     parentChainId: parentChain.id as 1 | 1337 | 412346 | 42161 | 42170 | 8453 | 11155111 | 421614 | 84532, // Chain-sdk only supports these parent chain ids
     parentChainRpcUrl: parentChainRpcUrl || getRpcUrl(parentChain),
   };

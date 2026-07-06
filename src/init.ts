@@ -6,8 +6,8 @@ import logger from './utils/logger.js';
 import { ChainEnv } from './state/chainEnv/index.js';
 import { SendersEnv, SenderRole } from './state/sendersEnv/index.js';
 import { loadChainFromTxHash } from './state/chainEnv/fromTxHash.js';
-import { getNodeConfigFilePath } from './state/chainEnv/persistence.js';
-import { createRollupPrepareTransaction } from '@arbitrum/chain-sdk';
+import { getNodeConfigPath } from './utils/nodeConfigUtils.js';
+import { parseDeploymentTx } from './utils/deploymentTx.js';
 import { config } from './config/index.js';
 
 export function initializeApp(): void {
@@ -37,7 +37,7 @@ export interface InitializeChainModeOptions {
 
 export async function initializeChainMode(opts: InitializeChainModeOptions = {}): Promise<void> {
   const hasTxHash = !!config.app.deploymentTxHash;
-  const hasNodeConfig = fs.existsSync(getNodeConfigFilePath());
+  const hasNodeConfig = fs.existsSync(getNodeConfigPath());
   const hasParentChainRpc = !!config.app.parentChainRpc;
 
   const chainEnv = ChainEnv.getInstance();
@@ -113,14 +113,12 @@ async function fetchChainIdFromTxHash(): Promise<bigint> {
     throw new Error('Parent chain client is not initialized.');
   }
 
-  const tx = await parentChainPublicClient.getTransaction({ hash: txHash });
-  const preparedTx = createRollupPrepareTransaction(tx);
-  const chainConfigJson = JSON.parse(preparedTx.getInputs()[0].config.chainConfig);
-  return BigInt(chainConfigJson.chainId);
+  const { chainConfig } = await parseDeploymentTx(parentChainPublicClient, txHash);
+  return BigInt(chainConfig.chainId);
 }
 
 function readChainIdFromNodeConfig(): bigint {
-  const nodeConfigPath = getNodeConfigFilePath();
+  const nodeConfigPath = getNodeConfigPath();
   const content = fs.readFileSync(nodeConfigPath, 'utf-8');
   const nodeConfig = JSON.parse(content);
   const infoRaw = nodeConfig?.chain?.['info-json'];

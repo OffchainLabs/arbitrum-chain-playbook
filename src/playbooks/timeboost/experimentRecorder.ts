@@ -13,6 +13,7 @@
 import { type Address, type Hash, type Hex, type LocalAccount, type PublicClient, parseEther } from 'viem';
 import { submitExpressLaneTransaction, type ExpressLaneSubmitInput, type RunnerLogger } from './expressLaneRunner.js';
 import type { ExperimentRecord, TxObservation } from './types.js';
+import { signRawTx } from './util.js';
 
 const recorderLogger: RunnerLogger & {
   section: (m: string) => void;
@@ -130,23 +131,7 @@ export interface SubmitNormalTxResult {
 export async function submitNormalTx(input: SubmitNormalTxInput): Promise<SubmitNormalTxResult> {
   const { senderAccount, childClient, chainId, to, valueEth = '0', label } = input;
 
-  const nonce = await childClient.getTransactionCount({
-    address: senderAccount.address,
-    blockTag: 'pending',
-  });
-  const gasPrice = await childClient.getGasPrice();
-
-  const rlpTx = (await senderAccount.signTransaction({
-    chainId,
-    type: 'eip1559',
-    to,
-    value: parseEther(valueEth),
-    gas: 100_000n,
-    maxFeePerGas: gasPrice * 2n,
-    maxPriorityFeePerGas: gasPrice,
-    nonce,
-    data: '0x',
-  })) as Hex;
+  const rlpTx = await signRawTx(childClient, senderAccount, { to, value: parseEther(valueEth), chainId });
 
   const sentAtMs = Date.now();
   const txHash = await childClient.sendRawTransaction({ serializedTransaction: rlpTx });
