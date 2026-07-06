@@ -25,17 +25,11 @@ import {
   getNodeConfigPath,
 } from '../../utils/nodeConfigUtils.js';
 import { parseDeploymentTx } from '../../utils/deploymentTx.js';
+import { ChainData } from '../../types/index.js';
 import { NodeConfigPaths } from './types.js';
 import { DEFAULT_CHAIN_NAME } from '../../types/constants.js';
 import SendersEnv, { SenderRole } from '../sendersEnv/index.js';
 import ChainEnv from './index.js';
-
-export interface TxHashReconstructionResult {
-  chainConfig: ChainConfig;
-  nodeConfig: NodeConfig;
-  coreContracts: CoreContracts;
-  nodeConfigPaths: NodeConfigPaths;
-}
 
 /**
  * Validate required environment variables for reconstruction.
@@ -58,7 +52,7 @@ function validateEnv(): void {
 /**
  * Reconstruct chain data from deployment transaction hash.
  */
-export async function loadChainFromTxHash(): Promise<TxHashReconstructionResult> {
+export async function loadChainFromTxHash(): Promise<Required<ChainData>> {
   validateEnv();
 
   const txHash = process.env.CHAIN_DEPLOYMENT_TRANSACTION_HASH as `0x${string}`;

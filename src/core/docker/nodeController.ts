@@ -50,8 +50,8 @@ export class NodeController {
     await nodeManager.discoverExistingContainers();
 
     // Stop health monitoring to avoid spam during menu interaction
-    const wasMonitoring = nodeManager.isMonitoringActive?.() ?? nodeManager.getRunningNodes().length > 0;
-    nodeManager.stopHealthMonitoring?.();
+    const wasMonitoring = nodeManager.isMonitoringActive();
+    nodeManager.stopHealthMonitoring();
 
     const chainId = this.chainEnv.chainConfig.getChainId();
     logger.info(`Managing nodes for Chain ID: ${chainId}`);
@@ -113,7 +113,7 @@ export class NodeController {
           breadcrumb.pop();
           // Restart monitoring when exiting if nodes are running and monitoring was active
           if (nodeManager.getRunningNodes().length > 0 && wasMonitoring) {
-            await nodeManager.startHealthMonitoring?.();
+            await nodeManager.startHealthMonitoring();
           }
           return;
       }
@@ -204,13 +204,10 @@ export class NodeController {
     logger.raw(`  Container ID: ${node.containerId || 'Not available'}`);
     logger.raw(`  HTTP Endpoint: http://localhost:${node.config.httpPort}`);
 
-    // Health and uptime are checked via NodeManager if available
-    if (nodeManager.checkNodeHealth && nodeManager.getNodeUptime) {
-      const isHealthy = await nodeManager.checkNodeHealth(selectedNode);
-      const uptime = await nodeManager.getNodeUptime(selectedNode);
-      logger.raw(`  Health:       ${isHealthy ? '🟢 Healthy' : '🔴 Unhealthy'}`);
-      logger.raw(`  Uptime:       ${uptime}`);
-    }
+    const isHealthy = await nodeManager.checkNodeHealth(selectedNode);
+    const uptime = await nodeManager.getNodeUptime(selectedNode);
+    logger.raw(`  Health:       ${isHealthy ? '🟢 Healthy' : '🔴 Unhealthy'}`);
+    logger.raw(`  Uptime:       ${uptime}`);
 
     await waitForEnter('Press Enter to continue...');
   }

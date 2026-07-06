@@ -31,7 +31,7 @@ import {
   TimeboostRunFullDemoParamsSchema,
 } from './schema.js';
 import { initializeApp, initializeChainMode } from '../init.js';
-import { ChainEnv, setNodeManagerClass } from '../state/chainEnv/index.js';
+import { ChainEnv } from '../state/chainEnv/index.js';
 import { OperationMode } from '../types/index.js';
 import { cancellationManager, withCancellation, type OperationContext } from '../utils/cancellation.js';
 import {
@@ -66,8 +66,6 @@ const EXIT_BUSINESS_FAIL = 2;
 const EXIT_VALIDATION = 3;
 const EXIT_USAGE = 64;
 const EXIT_CANCELLED = 130;
-
-setNodeManagerClass(NodeManager);
 
 async function main(): Promise<number> {
   const scriptPath = process.argv[2];
@@ -331,6 +329,7 @@ async function enterMode(mode: 'chain' | 'devnode' | 'remote', restorePolicy: 'f
   switch (mode) {
     case 'chain':
       chainEnv.setOperationMode(OperationMode.CHAIN);
+      chainEnv.setNodeManager(new NodeManager(chainEnv));
       await initializeChainMode({ headless: true, restorePolicy });
       return;
     case 'devnode':

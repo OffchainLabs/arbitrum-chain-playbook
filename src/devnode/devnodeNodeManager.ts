@@ -24,6 +24,29 @@ export class DevnodeNodeManager {
     return this.cachedNode.config.id === nodeId ? this.cachedNode : undefined;
   }
 
+  getNodes(): Map<string, NodeInstance> {
+    const nodes = new Map<string, NodeInstance>();
+    if (this.cachedNode) nodes.set(this.cachedNode.config.id, this.cachedNode);
+    return nodes;
+  }
+
+  async checkNodeHealth(_nodeId: string): Promise<boolean> {
+    return this.devnodeManager.isDevnodeRunning();
+  }
+
+  async getNodeUptime(_nodeId: string): Promise<string> {
+    return 'unknown';
+  }
+
+  // The devnode is a single dev container; there is no background health loop.
+  isMonitoringActive(): boolean {
+    return false;
+  }
+
+  async startHealthMonitoring(): Promise<void> {}
+
+  stopHealthMonitoring(): void {}
+
   displayStatus(): void {
     if (!this.cachedNode) {
       renderNodeTable([]);

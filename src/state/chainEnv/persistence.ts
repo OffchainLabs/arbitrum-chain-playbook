@@ -5,9 +5,11 @@
  */
 
 import fs from 'fs';
+import path from 'path';
 import { ChainConfig, NodeConfig } from '@arbitrum/chain-sdk';
-import { NodeType } from '../../types/index.js';
-import { CoreContracts, NodeConfigPaths } from './types.js';
+import { ChainData, NodeType } from '../../types/index.js';
+import { CoreContracts } from './types.js';
+import { LOCAL_DATA_DIR } from '../../types/constants.js';
 import {
   discoverNodeConfigs,
   getNodeConfigPath,
@@ -28,16 +30,6 @@ export function nodeConfigFileExists(): boolean {
   // Use discovery logic to find any available config files
   const discoveredConfigs = discoverNodeConfigs();
   return discoveredConfigs.size > 0;
-}
-
-/**
- * Data structure for persisted chain data
- */
-interface PersistedData {
-  chainConfig: ChainConfig;
-  nodeConfig: NodeConfig;
-  coreContracts?: CoreContracts;
-  nodeConfigPaths: NodeConfigPaths;
 }
 
 /**
@@ -63,9 +55,47 @@ function extractChainConfigFromNodeConfig(nodeConfig: any): ChainConfig | null {
 }
 
 /**
+ * Path of the persisted core-contracts file for a chain:
+ * <cwd>/<LOCAL_DATA_DIR>/<chainId>/core-contracts.json
+ */
+function coreContractsFilePath(chainId: number | bigint): string {
+  return path.join(process.cwd(), LOCAL_DATA_DIR, chainId.toString(), 'core-contracts.json');
+}
+
+/**
+ * Persist the full core-contracts set for a chain so a restart without
+ * CHAIN_DEPLOYMENT_TRANSACTION_HASH doesn't lose the inbox/rollup addresses
+ * (node-config's chain info only embeds a subset of them).
+ */
+export function saveCoreContracts(chainId: number | bigint, coreContracts: CoreContracts): void {
+  try {
+    const filePath = coreContractsFilePath(chainId);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(coreContracts, null, 2));
+  } catch (error) {
+    // Best-effort: losing this file only means core contracts must be
+    // reconstructed from the deployment tx hash on next start.
+    console.error('Failed to persist core contracts:', error);
+  }
+}
+
+/**
+ * Load persisted core contracts for a chain, if present.
+ */
+export function loadCoreContracts(chainId: number | bigint): CoreContracts | null {
+  try {
+    const filePath = coreContractsFilePath(chainId);
+    if (!fs.existsSync(filePath)) return null;
+    return JSON.parse(fs.readFileSync(filePath, 'utf8')) as CoreContracts;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Load chain data from disk (node-config.json or discovered config files)
  */
-export function loadChainDataFromDisk(): PersistedData | null {
+export function loadChainDataFromDisk(): ChainData | null {
   let configPath = getNodeConfigPath();
 
   // If the default config file doesn't exist, try to discover others
@@ -111,10 +141,14 @@ export function loadChainDataFromDisk(): PersistedData | null {
       }
     }
 
+    // Restore core contracts persisted at deployment time, if available
+    const coreContracts = loadCoreContracts(chainConfig.chainId) ?? undefined;
+
     return {
       chainConfig,
       nodeConfig,
       nodeConfigPaths,
+      coreContracts,
     };
   } catch (error) {
     console.error('Failed to load chain data from disk:', error);

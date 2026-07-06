@@ -3,7 +3,7 @@ import { NodeConfig, PrepareNodeConfigParams, prepareNodeConfig } from '@arbitru
 import { config } from 'dotenv';
 import path from 'path';
 import fs from 'fs';
-import { ChainEnvData, NodeType } from '../types/index.js';
+import { ChainData, NodeType } from '../types/index.js';
 import {
   NODE_CONFIG_FILENAME,
   NODE_CONFIG_MALICIOUS_FILENAME,
@@ -130,7 +130,7 @@ export async function generateNodeConfiguration(
   parentChainPublicClient: PublicClient,
   nodeAccounts: SenderAccount[],
   parentChainRpcUrl?: string,
-): Promise<ChainEnvData> {
+): Promise<ChainData> {
   // get the validator private keys from the node accounts
   const validatorPrivateKeys = nodeAccounts
     .filter((account) => account.role === SenderRole.Validator)
@@ -160,7 +160,7 @@ export async function generateNodeConfiguration(
 
   const nodeConfigPaths = createNodeConfigPaths();
 
-  return { nodeConfig, nodeConfigPaths, chainConfig };
+  return { nodeConfig, nodeConfigPaths, chainConfig, coreContracts };
 }
 
 // Configure main node with feed output enabled (for other nodes to subscribe)

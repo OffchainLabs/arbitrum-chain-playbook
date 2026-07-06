@@ -2,6 +2,7 @@ import { createPublicClient, http } from 'viem';
 import { getParentChain } from '../utils/parentChain.js';
 import { ChainConfig, CoreContracts } from '@arbitrum/chain-sdk';
 import { ChainEnv } from '../state/chainEnv/index.js';
+import { NodeManager } from '../core/docker/nodeManager.js';
 import { OperationMode } from '../types/index.js';
 import logger from '../utils/logger.js';
 import { parseDeploymentTx } from '../utils/deploymentTx.js';
@@ -65,6 +66,7 @@ export async function enterRemoteRpcMode(): Promise<boolean> {
 
     setRemoteRpcConfig(config);
     chainEnv.setOperationMode(OperationMode.REMOTE_RPC);
+    chainEnv.setNodeManager(new NodeManager(chainEnv));
     chainEnv.setRemoteRpcState(chainConfig, coreContracts, config.chainRpc);
 
     const parentChainPublicClient = createPublicClient({
