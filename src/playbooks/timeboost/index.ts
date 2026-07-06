@@ -9,6 +9,7 @@
  * inquirer-shaped façade.
  */
 
+import { TimeboostRunFullDemoParamsSchema } from '../../scripted/schema.js';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import { Playbook, HeadlessCommandSpec, PlaybookActionResult } from '../types.js';
@@ -151,6 +152,7 @@ class TimeboostPlaybook implements Playbook {
           'Optional param `bidCancellation: true` adds a round that shows re-bidding/cancellation flipping the winner (default false).',
         supportedModes: [OperationMode.CHAIN],
         redeploysChain: true,
+        paramsSchema: TimeboostRunFullDemoParamsSchema,
       },
     ];
   }

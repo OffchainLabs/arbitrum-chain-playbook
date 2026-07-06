@@ -411,6 +411,7 @@ export async function runMaliciousMintDemo(
 
   // Reused for every early-exit failure path below.
   const failureResult: MaliciousMintResult = {
+    success: false,
     mainAddress: '0x0' as Address,
     hackerAddress: '0x0' as Address,
     hackerPrivateKey: '0x0' as `0x${string}`,
@@ -487,16 +488,7 @@ export async function runMaliciousMintDemo(
         `Node exited unexpectedly (container: ${containerId}).`,
         `Check logs: docker logs ${containerId}`,
       );
-      return {
-        mainAddress: '0x0' as Address,
-        hackerAddress: '0x0' as Address,
-        hackerPrivateKey: '0x0' as `0x${string}`,
-        mintAmount: 0n,
-        withdrawAmount: 0n,
-        confirmPeriodBlocks: 0n,
-        bridgeBalanceInitial: 0n,
-        bridgeBalanceFinal: 0n,
-      };
+      return failureResult;
     }
   }
 
@@ -833,6 +825,7 @@ export async function runMaliciousMintDemo(
   }
 
   return {
+    success: true,
     mainAddress: mainAccount.address,
     hackerAddress: hackerAccount.address,
     hackerPrivateKey: hackerPrivateKey,

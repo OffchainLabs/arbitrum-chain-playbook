@@ -30,6 +30,7 @@ import {
 } from '../../types/constants.js';
 import { withCancellation, type OperationContext } from '../../utils/cancellation.js';
 import { breadcrumb } from '../../utils/breadcrumb.js';
+import { MaliciousMintParamsSchema, BoldChallengeParamsSchema } from '../../scripted/schema.js';
 import { positiveNumberValidator } from '../../utils/inquirerUtils.js';
 import chalk from 'chalk';
 
@@ -637,12 +638,14 @@ class MaliciousValidatorPlaybook implements Playbook {
         description: 'Run malicious mint demo end-to-end (deploy chain, mint, withdraw, monitor).',
         supportedModes: [OperationMode.CHAIN],
         redeploysChain: true,
+        paramsSchema: MaliciousMintParamsSchema,
       },
       {
         command: HEADLESS_COMMAND_BOLD_CHALLENGE,
         description: 'Run BoLD challenge demo (honest vs malicious validator).',
         supportedModes: [OperationMode.CHAIN],
         redeploysChain: true,
+        paramsSchema: BoldChallengeParamsSchema,
       },
     ];
   }
@@ -656,7 +659,7 @@ class MaliciousValidatorPlaybook implements Playbook {
       case HEADLESS_COMMAND_MALICIOUS_MINT: {
         const config = mergeMaliciousMintParams(params);
         const result = await this.executeMaliciousMint(config, ctx);
-        if (!result || isFailedMaliciousMintResult(result)) {
+        if (!result?.success) {
           return { success: false, message: 'Malicious mint demo failed or was cancelled.' };
         }
         return { success: true, data: result };
@@ -702,19 +705,6 @@ function mergeChallengeDemoParams(params: unknown): ChallengeDemoConfig {
     delayedMessageAmount: p.delayedMessageAmount ?? DEFAULT_CHALLENGE_DEMO_CONFIG.delayedMessageAmount,
     childChainTxCount: p.childChainTxCount ?? DEFAULT_CHALLENGE_DEMO_CONFIG.childChainTxCount,
   };
-}
-
-function isFailedMaliciousMintResult(result: MaliciousMintResult): boolean {
-  return (
-    result.mainAddress === '0x0' &&
-    result.hackerAddress === '0x0' &&
-    result.hackerPrivateKey === '0x0' &&
-    result.mintAmount === 0n &&
-    result.withdrawAmount === 0n &&
-    result.confirmPeriodBlocks === 0n &&
-    result.bridgeBalanceInitial === 0n &&
-    result.bridgeBalanceFinal === 0n
-  );
 }
 
 export const maliciousValidatorPlaybook = new MaliciousValidatorPlaybook();

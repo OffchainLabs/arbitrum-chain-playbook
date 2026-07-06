@@ -1,3 +1,4 @@
+import type { ZodTypeAny } from 'zod';
 import { OperationMode } from '../types/index.js';
 import type { OperationContext } from '../utils/cancellation.js';
 
@@ -46,6 +47,13 @@ export interface HeadlessCommandSpec {
    * state before the command gets a chance to redeploy.
    */
   redeploysChain?: boolean;
+  /**
+   * Zod schema for this command's `params`. The scripted runner validates
+   * against it before dispatch; when absent, params pass through unchecked.
+   * Declaring it here keeps command registration in one place — adding a new
+   * headless command no longer requires touching runScript.ts.
+   */
+  paramsSchema?: ZodTypeAny;
 }
 
 /**

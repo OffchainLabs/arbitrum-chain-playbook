@@ -21,15 +21,8 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import type { ZodError, ZodTypeAny } from 'zod';
-import {
-  ScriptSchema,
-  type ScriptDocument,
-  type ChainRestorePolicy,
-  MaliciousMintParamsSchema,
-  BoldChallengeParamsSchema,
-  TimeboostRunFullDemoParamsSchema,
-} from './schema.js';
+import type { ZodError } from 'zod';
+import { ScriptSchema, type ScriptDocument, type ChainRestorePolicy } from './schema.js';
 import { initializeApp, initializeChainMode } from '../init.js';
 import { ChainEnv } from '../state/chainEnv/index.js';
 import { OperationMode } from '../types/index.js';
@@ -49,11 +42,6 @@ import { NodeManager } from '../core/docker/nodeManager.js';
 import logger from '../utils/logger.js';
 import playbookRegistry from '../playbooks/index.js';
 import type { HeadlessCommandSpec, PlaybookActionResult } from '../playbooks/types.js';
-import {
-  HEADLESS_COMMAND_MALICIOUS_MINT,
-  HEADLESS_COMMAND_BOLD_CHALLENGE,
-} from '../playbooks/malicious-validator/index.js';
-import { HEADLESS_COMMAND_TIMEBOOST_RUN_FULL_DEMO } from '../playbooks/timeboost/index.js';
 import {
   createHeadlessSessionId,
   installHeadlessSessionEnv,
@@ -117,13 +105,6 @@ async function main(): Promise<number> {
   }
   const script = scriptResult.data;
 
-  const paramsResult = validateCommandParams(script);
-  if (!paramsResult.ok) {
-    logger.error(paramsResult.error);
-    return EXIT_VALIDATION;
-  }
-  const params = paramsResult.value;
-
   // ---------- Find playbook ----------
   const playbook = playbookRegistry.get(script.playbook);
   if (!playbook) {
@@ -144,6 +125,13 @@ async function main(): Promise<number> {
     );
     return EXIT_VALIDATION;
   }
+
+  const paramsResult = validateCommandParams(script, commandSpec);
+  if (!paramsResult.ok) {
+    logger.error(paramsResult.error);
+    return EXIT_VALIDATION;
+  }
+  const params = paramsResult.value;
 
   // ---------- Initialize app + mode ----------
   initializeApp();
@@ -277,8 +265,11 @@ function parseDocument(filePath: string, raw: string): { ok: true; value: unknow
   }
 }
 
-function validateCommandParams(script: ScriptDocument): { ok: true; value: unknown } | { ok: false; error: string } {
-  const schema = pickParamsSchema(script.playbook, script.command);
+function validateCommandParams(
+  script: ScriptDocument,
+  commandSpec: HeadlessCommandSpec | undefined,
+): { ok: true; value: unknown } | { ok: false; error: string } {
+  const schema = commandSpec?.paramsSchema;
   if (!schema) {
     // No specific schema registered — pass through. The playbook's own
     // mergeXxxParams will fall back to defaults; unknown fields are ignored.
@@ -292,17 +283,6 @@ function validateCommandParams(script: ScriptDocument): { ok: true; value: unkno
     };
   }
   return { ok: true, value: r.data };
-}
-
-function pickParamsSchema(playbook: string, command: string): ZodTypeAny | null {
-  if (playbook === 'malicious-validator') {
-    if (command === HEADLESS_COMMAND_MALICIOUS_MINT) return MaliciousMintParamsSchema;
-    if (command === HEADLESS_COMMAND_BOLD_CHALLENGE) return BoldChallengeParamsSchema;
-  }
-  if (playbook === 'timeboost') {
-    if (command === HEADLESS_COMMAND_TIMEBOOST_RUN_FULL_DEMO) return TimeboostRunFullDemoParamsSchema;
-  }
-  return null;
 }
 
 function formatZodError(err: ZodError): string {
