@@ -41,6 +41,9 @@ If the user wants to **add a new playbook** or **understand the architecture**, 
 |---|---|---|---|---|
 | `malicious-validator` | `malicious-mint` | chain | 7–10 min | ~0.06 ETH |
 | `malicious-validator` | `bold-challenge` | chain | 30–90 min | ~0.10 ETH |
+| `timeboost` | `run-full-demo` | chain | not yet profiled | not yet profiled |
+
+The command list above mirrors `listHeadlessCommands()` in each playbook — see also the table in README.md. Example scripts for every command live in `examples/`.
 
 **Both spend real Arbitrum Sepolia ETH.** Confirm with the user before kicking off a run unless they explicitly asked.
 

@@ -52,7 +52,7 @@ src/
 ├── index.ts                    # Application entry point
 ├── init.ts                     # App initialization logic
 ├── config/                     # Configuration management
-│   └── index.ts                # ConfigService singleton
+│   └── index.ts                # Env-derived config functions
 ├── devnode/                    # Devnode mode
 │   ├── devnodeConfig.ts        # Devnode configuration
 │   ├── devnodeManager.ts       # Devnode lifecycle management
@@ -65,12 +65,14 @@ src/
 │   └── mainMenu.ts             # Interactive CLI menu
 ├── core/                       # Core functionality
 │   ├── deployChain/            # Chain deployment
-│   │   ├── deployChain.ts      # Deployment implementation
-│   │   └── prepareNodeConfig.ts # Node config preparation
+│   │   └── deployChain.ts      # Deployment implementation
 │   ├── docker/                 # Docker/Node management
-│   │   ├── nodeManager.ts      # NodeManager (business logic)
+│   │   ├── nodeManager.ts      # Node lifecycle + health monitoring
 │   │   ├── nodeController.ts   # NodeController (UI logic)
-│   │   └── nodeConfigExtractors.ts # Config extractors
+│   │   ├── containerDiscovery.ts # Find running nitro containers
+│   │   ├── portAllocation.ts   # Host port selection
+│   │   ├── dockerCli.ts        # Quiet docker exec helper
+│   │   └── nodeConfigExtractors.ts # Config port extractors
 │   ├── interactChain/          # Chain interaction
 │   │   └── interactChainOperations.ts
 │   ├── nodeConfig/             # Node config operations
@@ -79,21 +81,19 @@ src/
 │       └── processMonitor.ts
 ├── state/                      # State management
 │   ├── chainEnv/               # ChainEnv singleton
-│   │   ├── index.ts            # ChainEnv class
+│   │   ├── index.ts            # ChainEnv class (status/nodeConfig/chainConfig views)
 │   │   ├── types.ts            # Related types
-│   │   ├── persistence.ts      # Load/save state
-│   │   ├── fromTxHash.ts       # State from tx hash
-│   │   └── accessors/          # Accessor classes
-│   │       ├── statusAccessor.ts
-│   │       ├── nodeConfigAccessor.ts
-│   │       └── chainConfigAccessor.ts
+│   │   ├── persistence.ts      # Load/save state + core-contracts file
+│   │   └── fromTxHash.ts       # State from tx hash
 │   └── sendersEnv/             # SendersEnv singleton
 │       ├── index.ts
 │       └── types.ts
 ├── playbooks/                  # Playbook modules
 │   ├── types.ts                # Playbook interface
 │   ├── index.ts                # Playbook registry
-│   └── malicious-validator/    # Example playbook
+│   ├── runnerKit.ts            # Shared runner/chain-ops primitives
+│   ├── malicious-validator/    # Malicious validator playbook
+│   └── timeboost/              # Timeboost auction playbook
 ├── types/                      # Shared types
 │   ├── index.ts                # Enums, interfaces
 │   └── constants.ts            # Application constants
@@ -459,22 +459,14 @@ yarn format
 
 # Check formatting
 yarn format:check
-
-# Lint
-yarn lint
 ```
 
 ## Testing
 
 ```bash
-# Run all tests
+# Run all tests (pure unit tests, no docker required)
 yarn test
 
-# Run specific test file
-yarn test tests/core/docker/nodeManager.spec.ts
-
-# Run with coverage
-yarn test --coverage
+# Run a specific test file
+npx tsx --test tests/unit/persistence.spec.ts
 ```
-
-**Note**: Some tests (e.g., `nodeManager.spec.ts`) require Docker to be running.

@@ -30,7 +30,7 @@ If you want to know the structure of this project and how to add playbooks, plea
 
 ## Prerequisites
 
-- **Node.js** v22.x (Node 23+ is not yet supported — `ts-node/esm` hits a `require()` cycle error there)
+- **Node.js** v22.x (pinned via `engines` in package.json; CI runs 22)
 - **Docker** (for running Nitro nodes)
 - **Yarn** or **npm**
 
@@ -188,6 +188,7 @@ ETH amounts in `params` are accepted as decimal strings (e.g. `"0.05"`) or numbe
 |---|---|---|
 | `malicious-validator` | `malicious-mint` | chain |
 | `malicious-validator` | `bold-challenge` | chain |
+| `timeboost` | `run-full-demo` | chain |
 
 **Output**:
 
