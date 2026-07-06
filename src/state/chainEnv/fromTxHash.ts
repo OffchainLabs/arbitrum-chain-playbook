@@ -61,8 +61,11 @@ export async function loadChainFromTxHash(): Promise<TxHashReconstructionResult>
 
   const txHash = process.env.CHAIN_DEPLOYMENT_TRANSACTION_HASH as `0x${string}`;
   const chainEnv = ChainEnv.getInstance();
-  const parentChainPublicClient = chainEnv.parentChainClient!;
-  const parentChain = parentChainPublicClient?.chain!;
+  const parentChainPublicClient = chainEnv.parentChainClient;
+  if (!parentChainPublicClient?.chain) {
+    throw new Error('Parent chain client is not initialized.');
+  }
+  const parentChain = parentChainPublicClient.chain;
 
   const tx = createRollupPrepareTransaction(await parentChainPublicClient.getTransaction({ hash: txHash }));
   const txReceipt = createRollupPrepareTransactionReceipt(
@@ -89,7 +92,7 @@ export async function loadChainFromTxHash(): Promise<TxHashReconstructionResult>
   sendersEnv.addByPrivateKey(process.env.VALIDATOR_PRIVATE_KEY as `0x${string}`, SenderRole.Validator);
 
   // For L2 chains settling to Ethereum mainnet or testnet （should not be needed as we are using Arbitrum Sepolia as parent chain only）
-  if (getParentChainLayer(parentChainPublicClient.chain!.id as any) === 1) {
+  if (getParentChainLayer(parentChain.id as any) === 1) {
     const beaconRpc = process.env.ETHEREUM_BEACON_RPC_URL;
     if (!beaconRpc) {
       throw new Error('Missing ETHEREUM_BEACON_RPC_URL for L2 chains.');
@@ -110,7 +113,7 @@ export async function loadChainFromTxHash(): Promise<TxHashReconstructionResult>
   // Build nodeConfigPaths map (main only for now)
   const nodeConfigPaths: NodeConfigPaths = createDefaultNodeConfigPaths();
 
-  chainEnv.setDeploymentResult(chainConfig, nodeConfig, coreContracts, nodeConfigPaths);
-
+  // Note: callers are responsible for applying this result to ChainEnv
+  // (all call sites invoke chainEnv.setDeploymentResult with it).
   return { chainConfig, nodeConfig, coreContracts, nodeConfigPaths };
 }

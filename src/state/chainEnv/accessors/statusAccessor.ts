@@ -14,7 +14,7 @@ export class StatusAccessor {
    * Check if chain environment is initiated.
    */
   isInitiated(): boolean {
-    return this.env['_status'] !== ChainStatus.NOT_INITATED && this.env['_chainConfig'] !== null;
+    return this.env['_status'] !== ChainStatus.NOT_INITIATED && this.env['_chainConfig'] !== null;
   }
 
   /**

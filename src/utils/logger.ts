@@ -1,5 +1,4 @@
 import chalk from 'chalk';
-import { debug } from 'console';
 import { fileLogger } from './fileLogger.js';
 
 export const logger = {
@@ -24,7 +23,10 @@ export const logger = {
   },
 
   debug: (message: string): void => {
-    debug(message);
+    // Console output only at LOG_LEVEL=debug; the file sink is gated by fileLogger itself.
+    if ((process.env.LOG_LEVEL || '').toLowerCase() === 'debug') {
+      console.debug(chalk.dim(message));
+    }
     fileLogger.debug(message);
   },
 

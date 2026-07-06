@@ -142,7 +142,6 @@ MAIN_PRIVATE_KEY=0x...  # Optional, for signing transactions
 |--------|-------------|--------------|
 | **Deploy New Chain** | Deploy an Orbit chain to parent chain | Chain Mode |
 | **Manage Nodes** | Start/stop/monitor main Nitro nodes | Chain, Devnode |
-
 | **Interact with Chain** | Send transactions, query state | All Modes |
 | **View Status** | Display chain and node information | All Modes |
 | **Node Config Operations** | Modify node configuration files | Chain Mode |

@@ -39,16 +39,7 @@ export const extractWsPortFromConfigPath = (configPath: string): number => {
     if (!fs.existsSync(configPath)) return 0;
     const raw = fs.readFileSync(configPath, 'utf8');
     const json: any = JSON.parse(raw);
-    const port = parsePortValue(json?.ws?.port);
-    if (port !== undefined) return port;
-
-    if (!json || typeof json !== 'object') return 0;
-    if (!json.ws || typeof json.ws !== 'object') {
-      json.ws = {};
-    }
-    json.ws.port = 0;
-    fs.writeFileSync(configPath, JSON.stringify(json, null, 2) + '\n', 'utf8');
-    return 0;
+    return parsePortValue(json?.ws?.port) ?? 0;
   } catch (_) {
     return 0;
   }

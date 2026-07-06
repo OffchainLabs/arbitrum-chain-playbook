@@ -51,8 +51,8 @@ If the user wants to **add a new playbook** or **understand the architecture**, 
 Run all five before starting. Each takes < 1 second except the image build (skip-if-cached).
 
 ```bash
-# 1. Node version (must be 23+)
-node --version | grep -E 'v(2[3-9]|[3-9][0-9])'
+# 1. Node version (must be 22.x — Node 23+ breaks ts-node/esm, see package.json engines)
+node --version | grep -E 'v22\.'
 
 # 2. Docker daemon up
 docker info > /dev/null 2>&1 && echo OK

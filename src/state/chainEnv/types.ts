@@ -12,7 +12,7 @@ export type { CoreContracts } from '@arbitrum/chain-sdk';
  */
 export enum ChainStatus {
   /** No chain initiated yet */
-  NOT_INITATED = 'not_initated',
+  NOT_INITIATED = 'not_initiated',
   /** Chain deployment in progress */
   DEPLOYING = 'deploying',
   /** Chain deployed but no nodes running */

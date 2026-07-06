@@ -51,7 +51,7 @@ export class ChainEnv {
   private _nodeConfig: NodeConfig | null = null;
   private _coreContracts: CoreContracts | null = null;
   private _nodeConfigPaths: NodeConfigPaths = new Map();
-  private _status: ChainStatus = ChainStatus.NOT_INITATED;
+  private _status: ChainStatus = ChainStatus.NOT_INITIATED;
   private _nodeManager: NodeManagerLike | null = null;
   private _parentChainPublicClient: PublicClient | null = null;
   private _operationMode: OperationMode = OperationMode.NONE;
@@ -146,7 +146,7 @@ export class ChainEnv {
     this._nodeConfig = null;
     this._coreContracts = null;
     this._nodeConfigPaths = new Map();
-    this._status = ChainStatus.NOT_INITATED;
+    this._status = ChainStatus.NOT_INITIATED;
     this._operationMode = OperationMode.NONE;
     this._remoteRpcUrl = null;
 

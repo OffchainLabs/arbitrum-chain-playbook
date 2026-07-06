@@ -47,6 +47,13 @@ const getConfigFilePattern = (): string[] => {
   return ['node-config.json', 'node-config-*.json', 'configs/node-*.json'];
 };
 
+// Convert a simple filename glob (only `*` supported) to an anchored RegExp.
+// Escape regex metacharacters first so the `.*` we substitute for `*` survives.
+export const filenameGlobToRegExp = (pattern: string): RegExp => {
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escaped.replace(/\*/g, '.*')}$`);
+};
+
 // Discover node configurations
 export const discoverNodeConfigs = (): Map<string, string> => {
   const configs = new Map<string, string>();
@@ -57,39 +64,26 @@ export const discoverNodeConfigs = (): Map<string, string> => {
       // Use fs.readdirSync with pattern matching instead of glob
       const cwd = process.cwd();
 
-      if (pattern === 'node-config.json') {
+      if (!pattern.includes('*')) {
+        // Exact filename, e.g. node-config.json
         const filePath = path.join(cwd, pattern);
         if (fs.existsSync(filePath)) {
-          configs.set('node-config', path.resolve(filePath));
+          configs.set(path.basename(pattern, '.json'), path.resolve(filePath));
         }
-      } else if (pattern.includes('*')) {
-        // Simple pattern matching for node-config-*.json
-        const files = fs.readdirSync(cwd);
-        const regex = new RegExp(pattern.replace(/\*/g, '.*').replace(/\./g, '\\.'));
-
-        files.forEach((file) => {
-          if (regex.test(file) && fs.existsSync(path.join(cwd, file))) {
-            const configName = path.basename(file, '.json');
-            configs.set(configName, path.resolve(path.join(cwd, file)));
-          }
-        });
       } else {
-        // For configs/node-*.json pattern
+        // Glob pattern; may carry a directory component, e.g. configs/node-*.json
         const dirPath = path.dirname(pattern);
         const fileName = path.basename(pattern);
-        const fullDirPath = path.join(cwd, dirPath);
+        const fullDirPath = dirPath === '.' ? cwd : path.join(cwd, dirPath);
 
         if (fs.existsSync(fullDirPath)) {
           const files = fs.readdirSync(fullDirPath);
-          const regex = new RegExp(fileName.replace(/\*/g, '.*').replace(/\./g, '\\.'));
+          const regex = filenameGlobToRegExp(fileName);
 
           files.forEach((file) => {
             if (regex.test(file)) {
               const fullPath = path.join(fullDirPath, file);
-              if (fs.existsSync(fullPath)) {
-                const configName = path.basename(file, '.json');
-                configs.set(configName, path.resolve(fullPath));
-              }
+              configs.set(path.basename(file, '.json'), path.resolve(fullPath));
             }
           });
         }
