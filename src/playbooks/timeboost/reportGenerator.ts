@@ -131,7 +131,7 @@ export function writeReport(input: WriteReportInput): WriteReportResult {
 }
 
 /** Build a filesystem-safe file name. ISO timestamps include `:` which Windows rejects. */
-export function buildReportFileName(chainId: number, isoTimestamp: string): string {
+function buildReportFileName(chainId: number, isoTimestamp: string): string {
   const safeIso = isoTimestamp.replace(/[:]/g, '-');
   return `timeboost-report-${chainId}-${safeIso}.html`;
 }

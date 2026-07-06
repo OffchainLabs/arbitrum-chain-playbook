@@ -8,10 +8,8 @@
 
 import { ArbSys__factory } from '@arbitrum/sdk/dist/lib/abi/factories/ArbSys__factory.js';
 import { Inbox__factory } from '@arbitrum/sdk/dist/lib/abi/factories/Inbox__factory.js';
-import { Outbox__factory } from '@arbitrum/sdk/dist/lib/abi/factories/Outbox__factory.js';
 import { ISequencerInbox__factory } from '@arbitrum/sdk/dist/lib/abi/factories/ISequencerInbox__factory.js';
 import { IRollupCore__factory } from '@arbitrum/sdk/dist/lib/abi/factories/IRollupCore__factory.js';
-import { NodeInterface__factory } from '@arbitrum/sdk/dist/lib/abi/factories/NodeInterface__factory.js';
 import { BoldRollupUserLogic__factory } from '@arbitrum/sdk/dist/lib/abi-bold/factories/BoldRollupUserLogic__factory.js';
 
 /**
@@ -25,12 +23,6 @@ export const arbSysAbi = ArbSys__factory.abi;
  * Used for L1-to-L2 deposits via depositEth
  */
 export const inboxAbi = Inbox__factory.abi;
-
-/**
- * Outbox contract ABI
- * Used for executing L2-to-L1 withdrawals on L1
- */
-export const outboxAbi = Outbox__factory.abi;
 
 /**
  * SequencerInbox contract ABI
@@ -70,20 +62,6 @@ export const arbMinterAbi = [
     type: 'event',
   },
 ] as const;
-
-/**
- * NodeInterface precompile ABI (0xC8)
- * Used for getting outbox proof for L2->L1 withdrawals
- */
-export const nodeInterfaceAbi = NodeInterface__factory.abi;
-
-export const NODE_INTERFACE_ADDRESS = '0x00000000000000000000000000000000000000C8' as const;
-
-/**
- * L2ToL1Tx event ABI for parsing withdrawal events
- * Note: This event is also included in arbSysAbi (ArbSys__factory.abi)
- */
-export const l2ToL1TxEventAbi = arbSysAbi;
 
 /**
  * EdgeChallengeManager contract ABI (events only)

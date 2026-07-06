@@ -38,10 +38,3 @@ export function getRemoteRpcConfig(): RemoteRpcConfig | null {
 export function setRemoteRpcConfig(config: RemoteRpcConfig): void {
   currentRemoteRpcConfig = config;
 }
-
-/**
- * Clear the remote RPC configuration
- */
-export function clearRemoteRpcConfig(): void {
-  currentRemoteRpcConfig = null;
-}

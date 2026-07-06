@@ -12,7 +12,7 @@ import { ChainConfig, NodeConfig } from '@arbitrum/chain-sdk';
 import { PublicClient } from 'viem';
 import { NodeManagerLike, OperationMode } from '../../types/index.js';
 import { ChainStatus, CoreContracts, NodeConfigPaths } from './types.js';
-import { loadChainDataFromDisk, saveChainDataToDisk, nodeConfigFileExists } from './persistence.js';
+import { loadChainDataFromDisk, nodeConfigFileExists } from './persistence.js';
 import logger from '../../utils/logger.js';
 import { StatusAccessor } from './accessors/statusAccessor.js';
 import { NodeConfigAccessor } from './accessors/nodeConfigAccessor.js';
@@ -123,22 +123,6 @@ export class ChainEnv {
   }
 
   /**
-   * Save current chain configuration to disk
-   */
-  save(): void {
-    if (!this._chainConfig || !this._nodeConfig) {
-      throw new Error('No chain data to save');
-    }
-
-    saveChainDataToDisk({
-      chainConfig: this._chainConfig,
-      nodeConfig: this._nodeConfig,
-      coreContracts: this._coreContracts || undefined,
-      nodeConfigPaths: this._nodeConfigPaths,
-    });
-  }
-
-  /**
    * Set chain data after deployment or reconstruction from tx hash
    */
   setDeploymentResult(
@@ -227,7 +211,6 @@ export class ChainEnv {
    * Use this to access all node operations:
    *   chainEnv.nodeManager.startNode(type)
    *   chainEnv.nodeManager.stopNode(id)
-   *   chainEnv.nodeManager.manageNodes()
    */
   get nodeManager(): NodeManagerLike | null {
     if (!this._nodeManager && NodeManagerClass) {
@@ -261,8 +244,5 @@ export class ChainEnv {
     return this._remoteRpcModeAvailable;
   }
 }
-
-// Export singleton getter for convenience
-export const getChainEnv = (): ChainEnv => ChainEnv.getInstance();
 
 export default ChainEnv;

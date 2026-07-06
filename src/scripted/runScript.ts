@@ -238,7 +238,7 @@ async function main(): Promise<number> {
       },
       exitCode,
     });
-    return timedOut ? EXIT_CANCELLED : EXIT_CANCELLED;
+    return EXIT_CANCELLED;
   }
 
   const exitCode = result.success ? EXIT_OK : EXIT_BUSINESS_FAIL;

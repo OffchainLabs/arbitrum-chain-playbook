@@ -33,7 +33,7 @@ const TIMEBOOST_DOMAIN_LABEL = 'TIMEBOOST_BID';
 /** Cached keccak256("TIMEBOOST_BID"). */
 let cachedDomainValue: Hex | null = null;
 
-export function timeboostDomainValue(): Hex {
+function timeboostDomainValue(): Hex {
   if (cachedDomainValue === null) {
     cachedDomainValue = keccak256(toBytes(TIMEBOOST_DOMAIN_LABEL));
   }

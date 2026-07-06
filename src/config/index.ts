@@ -1,26 +1,4 @@
 import { getParentChainKey, getParentChainDisplayName, isDefaultParentChain } from '../utils/parentChain.js';
-import {
-  DOCKER_IMAGE,
-  CONTAINER_NAME_PREFIX,
-  DOCKER_DATA_DIR,
-  DOCKER_USER,
-  DOCKER_NODE_CONFIG_PATH,
-  LOCAL_DATA_DIR,
-  DEFAULT_MAIN_NODE_HTTP_PORT,
-  DEFAULT_START_PORT,
-  PORT_INCREMENT,
-  TRANSPORT_TIMEOUT_MS,
-  NODE_CONFIG_FILENAME,
-  NODE_CONFIG_MALICIOUS_FILENAME,
-  NODE_CONFIG_HONEST_FILENAME,
-  BASE_STAKE_ETH,
-  TEST_TOKENS_AMOUNT_ETH,
-  CONFIRM_PERIOD_BLOCKS,
-  MINIMUM_ASSERTION_PERIOD,
-  L2_DEPOSIT_AMOUNT_ETH,
-  APP_NAME,
-  DEFAULT_CHAIN_NAME,
-} from '../types/constants.js';
 
 export interface AppConfig {
   parentChainRpc: string | undefined;
@@ -30,41 +8,6 @@ export interface AppConfig {
   chainRpc: string | undefined;
   deploymentTxHash: string | undefined;
   deployerPrivateKey: string | undefined;
-}
-
-export interface DockerConfig {
-  image: string;
-  containerPrefix: string;
-  dataDir: string;
-  user: string;
-  nodeConfigPath: string;
-  localDataDir: string;
-}
-
-export interface NetworkConfig {
-  defaultMainNodeHttpPort: number;
-  defaultStartPort: number;
-  portIncrement: number;
-  transportTimeoutMs: number;
-}
-
-export interface NodeConfigFilesConfig {
-  main: string;
-  malicious: string;
-  honest: string;
-}
-
-export interface DeploymentConfig {
-  baseStakeEth: string;
-  testTokensAmountEth: string;
-  confirmPeriodBlocks: bigint;
-  minimumAssertionPeriod: bigint;
-  l2DepositAmountEth: string;
-  defaultChainName: string;
-}
-
-export interface AppMetadata {
-  name: string;
 }
 
 export class ConfigService {
@@ -88,51 +31,6 @@ export class ConfigService {
       chainRpc: process.env.CHAIN_RPC,
       deploymentTxHash: process.env.CHAIN_DEPLOYMENT_TRANSACTION_HASH,
       deployerPrivateKey: process.env.MAIN_PRIVATE_KEY,
-    };
-  }
-
-  get docker(): DockerConfig {
-    return {
-      image: DOCKER_IMAGE,
-      containerPrefix: CONTAINER_NAME_PREFIX,
-      dataDir: DOCKER_DATA_DIR,
-      user: DOCKER_USER,
-      nodeConfigPath: DOCKER_NODE_CONFIG_PATH,
-      localDataDir: LOCAL_DATA_DIR,
-    };
-  }
-
-  get network(): NetworkConfig {
-    return {
-      defaultMainNodeHttpPort: DEFAULT_MAIN_NODE_HTTP_PORT,
-      defaultStartPort: DEFAULT_START_PORT,
-      portIncrement: PORT_INCREMENT,
-      transportTimeoutMs: TRANSPORT_TIMEOUT_MS,
-    };
-  }
-
-  get nodeConfigFiles(): NodeConfigFilesConfig {
-    return {
-      main: NODE_CONFIG_FILENAME,
-      malicious: NODE_CONFIG_MALICIOUS_FILENAME,
-      honest: NODE_CONFIG_HONEST_FILENAME,
-    };
-  }
-
-  get deployment(): DeploymentConfig {
-    return {
-      baseStakeEth: BASE_STAKE_ETH,
-      testTokensAmountEth: TEST_TOKENS_AMOUNT_ETH,
-      confirmPeriodBlocks: CONFIRM_PERIOD_BLOCKS,
-      minimumAssertionPeriod: MINIMUM_ASSERTION_PERIOD,
-      l2DepositAmountEth: L2_DEPOSIT_AMOUNT_ETH,
-      defaultChainName: DEFAULT_CHAIN_NAME,
-    };
-  }
-
-  get metadata(): AppMetadata {
-    return {
-      name: APP_NAME,
     };
   }
 

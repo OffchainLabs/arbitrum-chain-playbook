@@ -157,25 +157,6 @@ export function loadChainDataFromDisk(): PersistedData | null {
 }
 
 /**
- * Save chain data to disk
- */
-export function saveChainDataToDisk(data: {
-  chainConfig: ChainConfig;
-  nodeConfig: NodeConfig;
-  coreContracts?: CoreContracts;
-  nodeConfigPaths: NodeConfigPaths;
-}): void {
-  const configPath = getNodeConfigFilePath();
-
-  try {
-    // Save the main node config
-    fs.writeFileSync(configPath, JSON.stringify(data.nodeConfig, null, 2));
-  } catch (error) {
-    throw new Error(`Failed to save chain data: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-/**
  * Save node config for specific type
  */
 export function saveNodeConfigForType(type: NodeType, nodeConfig: NodeConfig): void {

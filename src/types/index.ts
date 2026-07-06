@@ -55,12 +55,6 @@ export interface SingleNodeConfig {
   forwardingTargetPort?: number; // Main node's HTTP port for forwarding transactions (only for non-MAIN nodes)
 }
 
-// Global application state
-export interface AppState {
-  chain: ChainConfig | null;
-  nodes: Map<string, NodeInstance>;
-}
-
 export interface NodeManagerLike {
   // Node querying
   getRunningNodes(): NodeInstance[];
@@ -99,20 +93,7 @@ export enum MenuAction {
 // Node management action types
 export enum NodeAction {
   START_MAIN = 'start_main',
-  START_HONEST = 'start_honest',
-  START_MALICIOUS = 'start_malicious',
-  START_BOTH = 'start_both',
   STOP_NODE = 'stop_node',
   STOP_ALL = 'stop_all',
-  BACK = 'back',
-}
-
-// Interface call action types
-export enum InterfaceAction {
-  ACT_HONEST = 'act_honest',
-  ACT_MALICIOUS = 'act_malicious',
-  GET_BLOCK_HEIGHT = 'get_block_height',
-  GET_VALIDATOR_SET = 'get_validator_set',
-  SUBMIT_TRANSACTION = 'submit_transaction',
   BACK = 'back',
 }

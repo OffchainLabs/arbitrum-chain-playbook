@@ -20,9 +20,6 @@ import {
 import { SenderAccount, SenderRole } from '../state/sendersEnv/index.js';
 config();
 
-// Get base config file path (MAIN type)
-export const getNodeConfigPath = () => path.join(process.cwd(), NODE_CONFIG_FILENAME);
-
 // Get config file path for specific NodeType
 export const getNodeConfigPathForType = (type: NodeType): string => {
   const basePath = process.cwd();
@@ -39,14 +36,14 @@ export const getNodeConfigPathForType = (type: NodeType): string => {
 };
 
 // Initialize nodeConfigPaths Map with MAIN type by default
-export const createNodeConfigPaths = (): Map<NodeType, string> => {
+const createNodeConfigPaths = (): Map<NodeType, string> => {
   const paths = new Map<NodeType, string>();
   paths.set(NodeType.MAIN, getNodeConfigPathForType(NodeType.MAIN));
   return paths;
 };
 
 // Get config file patterns for discovery
-export const getConfigFilePattern = (): string[] => {
+const getConfigFilePattern = (): string[] => {
   return ['node-config.json', 'node-config-*.json', 'configs/node-*.json'];
 };
 
@@ -385,32 +382,3 @@ export function overwriteToNodeConfigForDeletingBoldStrategy(nodeConfig: NodeCon
 
   return nodeConfig;
 }
-
-// Find the chain id from the node config file
-export const findChainIdFromConfigFile = (obj: any): number | null => {
-  if (!obj || typeof obj !== 'object') return null;
-  // direct keys: camelCase and dashed
-  const direct = parseChainIdNumber((obj as any).chainId) ?? parseChainIdNumber((obj as any)['chain-id']);
-  if (direct !== null) return direct;
-
-  // nested chain-config (dashed or camelCase)
-  const cfg = (obj as any)['chain-config'] ?? (obj as any).chainConfig;
-  const fromCfg = parseChainIdNumber(cfg?.chainId) ?? parseChainIdNumber(cfg?.['chain-id']);
-  if (fromCfg !== null) return fromCfg;
-
-  for (const v of Object.values(obj)) {
-    const r = findChainIdFromConfigFile(v);
-    if (r !== null) return r;
-  }
-  return null;
-};
-
-// Parse the chain id number from the value
-export const parseChainIdNumber = (val: unknown): number | null => {
-  if (typeof val === 'number') return val;
-  if (typeof val === 'string' && val.trim() !== '') {
-    const n = Number(val);
-    return Number.isNaN(n) ? null : n;
-  }
-  return null;
-};

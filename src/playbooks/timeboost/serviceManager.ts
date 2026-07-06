@@ -168,15 +168,6 @@ export async function stopTimeboostServices(): Promise<void> {
   }
 }
 
-export async function timeboostServicesRunning(): Promise<boolean> {
-  const names = [REDIS_CONTAINER, BID_VALIDATOR_CONTAINER, AUCTIONEER_CONTAINER];
-  for (const n of names) {
-    const r = (await dockerCommand(`inspect -f '{{.State.Running}}' ${n}`, { echo: false })) as { raw?: string };
-    if (!r?.raw?.includes('true')) return false;
-  }
-  return true;
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

@@ -1,8 +1,8 @@
 /**
  * Shared UI utilities for the CLI application.
  *
- * Provides animated spinners (via ora) and a multi-step progress tracker
- * that displays real-time step counters with elapsed time and ETA.
+ * Provides a multi-step progress tracker that displays real-time step
+ * counters with elapsed time and ETA.
  */
 
 import ora, { type Ora } from 'ora';
@@ -11,40 +11,12 @@ import chalk from 'chalk';
 /**
  * Format a duration in milliseconds to a human-readable string.
  */
-export function formatDuration(ms: number): string {
+function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   return `${minutes}m ${remainingSeconds}s`;
-}
-
-/**
- * Create an animated spinner.
- */
-export function createSpinner(text: string): Ora {
-  return ora({ text, spinner: 'dots' });
-}
-
-/**
- * Run an async function with an animated spinner.
- * Shows the spinner while the function executes,
- * then shows a check on success or X on failure.
- */
-export async function withSpinner<T>(
-  text: string,
-  fn: () => Promise<T>,
-  options?: { successText?: string; failText?: string },
-): Promise<T> {
-  const spinner = ora({ text, spinner: 'dots' }).start();
-  try {
-    const result = await fn();
-    spinner.succeed(options?.successText ?? text);
-    return result;
-  } catch (error) {
-    spinner.fail(options?.failText ?? text);
-    throw error;
-  }
 }
 
 /**

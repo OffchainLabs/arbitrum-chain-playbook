@@ -26,7 +26,7 @@ import { ChildTransactionReceipt, ChildToParentMessageStatus } from '@arbitrum/s
 import type { CoreContracts } from '@arbitrum/chain-sdk';
 import { ChainEnv } from '../../state/chainEnv/index.js';
 import { SendersEnv, SenderRole } from '../../state/sendersEnv/index.js';
-import { NodeType, NodeStatus } from '../../types/index.js';
+import { NodeType } from '../../types/index.js';
 import {
   NODE_CONFIG_FILENAME,
   DEFAULT_MAIN_NODE_HTTP_PORT,
@@ -43,79 +43,6 @@ import { type MaliciousMintConfig, type MaliciousMintResult, ARB_SYS_ADDRESS, AR
 import { startRollupMonitor, stopRollupMonitor } from './monitor.js';
 import { ensureCustomNetworkRegistered } from '../../utils/arbitrumSdkSetup.js';
 import { normalizeBytes32Like } from '../../utils/bytes32.js';
-
-/**
- * Trigger malicious state change (simplified version for challenge demo)
- *
- * This function only executes the core malicious minting operation:
- * 1. Uses the main account to call ArbMinter.mintBalanceTo on L2
- * 2. No deposit, withdraw, or confirmation waiting needed
- *
- * This is sufficient to create an invalid state that honest validators will challenge.
- */
-export async function triggerMaliciousState(
-  mintAmount: bigint = BigInt('50000000000000000'), // 0.05 ETH default
-): Promise<{ mintTxHash: string; mintAmount: bigint }> {
-  logger.section('Trigger Malicious State');
-
-  const envConfig = getEnvConfig();
-  const mainAccount = privateKeyToAccount(envConfig.mainPrivateKey);
-
-  logger.info(`Main account: ${mainAccount.address}`);
-  logger.info(`Mint amount: ${formatEther(mintAmount)} ETH`);
-
-  // Define child chain
-  const childChain = defineChain({
-    id: envConfig.chainId,
-    name: 'Custom Arbitrum Chain',
-    network: 'custom-arbitrum',
-    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-    rpcUrls: {
-      default: { http: [envConfig.chainRpc] },
-      public: { http: [envConfig.chainRpc] },
-    },
-  });
-
-  // Create child chain clients
-  const childClient = createPublicClient({
-    chain: childChain,
-    transport: http(envConfig.chainRpc),
-  });
-
-  const childWalletMain = createWalletClient({
-    account: mainAccount,
-    chain: childChain,
-    transport: http(envConfig.chainRpc),
-  });
-
-  // Check current balance
-  const balanceBefore = await childClient.getBalance({ address: mainAccount.address });
-  logger.info(`Current L2 balance: ${formatEther(balanceBefore)} ETH`);
-
-  // Call ArbMinter.mintBalanceTo to create invalid state
-  logger.info('Calling ArbMinter.mintBalanceTo...');
-
-  const mintTx = await childWalletMain.writeContract({
-    address: ARB_MINTER_ADDRESS,
-    abi: arbMinterAbi,
-    functionName: 'mintBalanceTo',
-    args: [mainAccount.address, mintAmount],
-    chain: childChain as Chain,
-    account: mainAccount,
-  });
-
-  await childClient.waitForTransactionReceipt({ hash: mintTx });
-  logger.txHash(mintTx, 'mintBalanceTo', 'success');
-
-  const balanceAfter = await childClient.getBalance({ address: mainAccount.address });
-  logger.success(`New L2 balance: ${formatEther(balanceAfter)} ETH`);
-  logger.event(`Malicious state created! Minted ${formatEther(mintAmount)} ETH`);
-
-  return {
-    mintTxHash: mintTx,
-    mintAmount,
-  };
-}
 
 /**
  * Wait for balance to reach a minimum threshold

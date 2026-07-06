@@ -42,7 +42,7 @@ export interface FileLoggerOptions {
   structuredEvents?: boolean;
 }
 
-export function getLogLevel(): string {
+function getLogLevel(): string {
   const level = (process.env.LOG_LEVEL || 'info').toLowerCase();
   const valid = ['error', 'warn', 'info', 'debug'];
   return valid.includes(level) ? level : 'info';

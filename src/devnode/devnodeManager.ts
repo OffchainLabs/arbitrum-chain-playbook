@@ -68,11 +68,6 @@ export class DevnodeManager {
     return true;
   }
 
-  async restartDevnode(): Promise<boolean> {
-    await this.stopDevnode();
-    return this.startDevnode();
-  }
-
   async isDevnodeRunning(): Promise<boolean> {
     return (await this.getRunningContainerId()) !== null;
   }

@@ -17,7 +17,7 @@ import { NodeInstance, NodeStatus, NodeType } from '../types/index.js';
 // Color helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function colorForNodeStatus(status: NodeStatus): (s: string) => string {
+function colorForNodeStatus(status: NodeStatus): (s: string) => string {
   switch (status) {
     case NodeStatus.RUNNING:
       return chalk.green;
@@ -30,7 +30,7 @@ export function colorForNodeStatus(status: NodeStatus): (s: string) => string {
   }
 }
 
-export function colorForNodeType(type: NodeType): (s: string) => string {
+function colorForNodeType(type: NodeType): (s: string) => string {
   switch (type) {
     case NodeType.HONEST:
       return chalk.green;

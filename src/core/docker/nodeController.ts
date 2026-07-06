@@ -11,7 +11,7 @@ import { ChainEnv } from '../../state/chainEnv/index.js';
 import logger from '../../utils/logger.js';
 import { waitForEnter } from '../../utils/inquirerUtils.js';
 import { breadcrumb } from '../../utils/breadcrumb.js';
-import { guard } from '../../utils/guards.js';
+import { requireChainInitiated } from '../../utils/guards.js';
 import chalk from 'chalk';
 
 /**
@@ -33,7 +33,7 @@ export class NodeController {
    * Show the interactive node management menu
    */
   async showManagementMenu(): Promise<void> {
-    if (!guard.requireChainInitiated()) {
+    if (!requireChainInitiated()) {
       return;
     }
 
@@ -70,7 +70,6 @@ export class NodeController {
               value: NodeAction.START_MAIN,
             },
             new inquirer.Separator(),
-            { name: 'Monitor Node Health', value: 'monitor_health', disabled: 'Not supported yet' },
             { name: `View Node Details ${chalk.dim('— Inspect a running node')}`, value: 'node_details' },
             new inquirer.Separator(),
             { name: `Stop a Node ${chalk.dim('— Stop a specific running node')}`, value: NodeAction.STOP_NODE },

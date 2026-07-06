@@ -24,14 +24,6 @@ class Breadcrumb {
     console.log(`  ${trail}`);
     console.log();
   }
-
-  get current(): string {
-    return this.path[this.path.length - 1];
-  }
-
-  reset(): void {
-    this.path = ['Main'];
-  }
 }
 
 /** Discard any buffered stdin so stale keystrokes don't leak into the next prompt. */

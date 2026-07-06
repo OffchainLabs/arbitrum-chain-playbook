@@ -1,6 +1,5 @@
 import chalk from 'chalk';
 import { debug } from 'console';
-import ora, { type Ora } from 'ora';
 import { fileLogger } from './fileLogger.js';
 
 export const logger = {
@@ -29,43 +28,11 @@ export const logger = {
     fileLogger.debug(message);
   },
 
-  step: (step: number, total: number, message: string): void => {
-    console.log(chalk.cyan(`[${step}/${total}]`), message);
-    fileLogger.info(`[${step}/${total}] ${message}`);
-  },
-
-  title: (message: string): void => {
-    console.log();
-    console.log(chalk.bold.magenta('🎮 ' + message));
-    console.log(chalk.magenta('='.repeat(message.length + 3)));
-    console.log();
-    fileLogger.info(`[TITLE] ${message}`);
-  },
-
   section: (message: string): void => {
     console.log();
     console.log(chalk.bold.cyan('▸ ' + message));
     console.log();
     fileLogger.info(`[SECTION] ${message}`);
-  },
-
-  divider: (): void => {
-    console.log(chalk.gray('─'.repeat(50)));
-  },
-
-  nodeStatus: (nodeName: string, status: string, type: string): void => {
-    const typeColor = type === 'honest' ? chalk.green : chalk.red;
-    const statusColor =
-      status === 'running'
-        ? chalk.green
-        : status === 'stopped'
-          ? chalk.gray
-          : status === 'starting'
-            ? chalk.yellow
-            : chalk.red;
-
-    console.log(`  ${typeColor('●')} ${chalk.bold(nodeName)} - ${statusColor(status)} (${typeColor(type)})`);
-    fileLogger.info(`[NODE] ${nodeName}: ${status} (${type})`);
   },
 
   errorWithFix: (message: string, fix: string): void => {
@@ -116,34 +83,6 @@ export const logger = {
   newline: (): void => {
     console.log();
   },
-
-  progress: (current: number, total: number, message: string): void => {
-    const percentage = Math.round((current / total) * 100);
-    const progressBar = '█'.repeat(Math.floor(percentage / 5)) + '░'.repeat(20 - Math.floor(percentage / 5));
-    process.stdout.write(`\r${chalk.cyan('⏳')} [${progressBar}] ${percentage}% ${message}`);
-    if (current === total) console.log();
-  },
-
-  spinner: (() => {
-    let instance: Ora | null = null;
-    return {
-      start: (message: string) => {
-        if (instance) instance.stop();
-        instance = ora({ text: message, spinner: 'dots' }).start();
-        fileLogger.info(`[SPINNER] ${message}`);
-      },
-      stop: (success: boolean = true) => {
-        if (instance) {
-          if (success) {
-            instance.succeed();
-          } else {
-            instance.fail();
-          }
-          instance = null;
-        }
-      },
-    };
-  })(),
 };
 
 export default logger;

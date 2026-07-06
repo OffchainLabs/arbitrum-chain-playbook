@@ -214,7 +214,7 @@ export async function completeObservation(input: CompleteObservationInput): Prom
  * Returns `null` when the field is absent — typically because the sequencer
  * does not have `node.transaction-streamer.track-block-metadata-from` set.
  */
-export function readTimeboostedField(rawReceipt: Record<string, unknown> | null): boolean | null {
+function readTimeboostedField(rawReceipt: Record<string, unknown> | null): boolean | null {
   if (!rawReceipt || typeof rawReceipt !== 'object') return null;
   const v = rawReceipt['timeboosted'];
   if (typeof v === 'boolean') return v;
