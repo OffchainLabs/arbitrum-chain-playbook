@@ -23,6 +23,7 @@ import {
 } from 'viem';
 import { expressLaneAuctionArtifact, proxyAdminArtifact, transparentProxyArtifact } from './abis.js';
 import { signAndSendRawTx } from './util.js';
+import type { RoundTimingConfig } from './roundClock.js';
 import { compileMintableERC20 } from './compileBidToken.js';
 
 // ---------------------------------------------------------------------------
@@ -30,12 +31,6 @@ import { compileMintableERC20 } from './compileBidToken.js';
 // ---------------------------------------------------------------------------
 
 /** Default demo round timing — matches v2 plan §0 #1 (20 / 5 / 3). */
-export interface RoundTimingConfig {
-  roundDurationSeconds: number;
-  auctionClosingSeconds: number;
-  reserveSubmissionSeconds: number;
-}
-
 export const DEFAULT_DEMO_TIMING: RoundTimingConfig = {
   roundDurationSeconds: 20,
   auctionClosingSeconds: 5,

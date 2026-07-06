@@ -495,32 +495,6 @@ export async function runFullTimeboostDemo(
 }
 
 // ---------------------------------------------------------------------------
-// Status / stop helpers (called by the menu)
-// ---------------------------------------------------------------------------
-
-export async function viewTimeboostStatus(): Promise<void> {
-  // For now: a thin status line. Phase 8 polish can pull current round + controller
-  // from the deployed contract once we persist its address. Until then we just
-  // delegate to docker for service status.
-  logger.section('Timeboost services');
-  try {
-    // Lazy-load `dockerCommand` to avoid pulling docker-cli-js on import-time.
-    const { dockerCommand } = await import('docker-cli-js');
-    const r = await dockerCommand('ps --filter name=timeboost- --format "{{.Names}} {{.Status}}"', {
-      echo: false,
-    });
-    logger.raw(((r as { raw?: string })?.raw ?? '<no timeboost services running>').trim());
-  } catch (e) {
-    logger.warn(`docker query failed: ${e instanceof Error ? e.message : String(e)}`);
-  }
-}
-
-export async function stopTimeboostStack(): Promise<void> {
-  await stopTimeboostServices();
-  logger.success('Timeboost services stopped.');
-}
-
-// ---------------------------------------------------------------------------
 // Internals
 // ---------------------------------------------------------------------------
 

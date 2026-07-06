@@ -17,7 +17,27 @@ import { OperationMode } from '../../types/index.js';
 import logger from '../../utils/logger.js';
 import { breadcrumb } from '../../utils/breadcrumb.js';
 import { withCancellation, type OperationContext } from '../../utils/cancellation.js';
-import { runFullTimeboostDemo, viewTimeboostStatus, stopTimeboostStack } from './timeboostDemoRunner.js';
+import { runFullTimeboostDemo } from './timeboostDemoRunner.js';
+import { stopTimeboostServices } from './serviceManager.js';
+
+async function viewTimeboostStatus(): Promise<void> {
+  logger.section('Timeboost services');
+  try {
+    // Lazy-load `dockerCommand` to avoid pulling docker-cli-js on import-time.
+    const { dockerCommand } = await import('docker-cli-js');
+    const r = await dockerCommand('ps --filter name=timeboost- --format "{{.Names}} {{.Status}}"', {
+      echo: false,
+    });
+    logger.raw(((r as { raw?: string })?.raw ?? '<no timeboost services running>').trim());
+  } catch (e) {
+    logger.warn(`docker query failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+async function stopTimeboostStack(): Promise<void> {
+  await stopTimeboostServices();
+  logger.success('Timeboost services stopped.');
+}
 
 /** Headless command id for the full demo (shared with the scripted runner). */
 export const HEADLESS_COMMAND_TIMEBOOST_RUN_FULL_DEMO = 'run-full-demo';

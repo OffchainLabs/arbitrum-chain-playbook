@@ -17,26 +17,15 @@ import {
   parseEther,
   toHex,
 } from 'viem';
-import { DONT_CARE_SEQUENCE, type JsonExpressLaneSubmission } from './types.js';
-import { signExpressLaneSubmission } from './expressLaneSigner.js';
-import { signRawTx } from './util.js';
+import { type JsonExpressLaneSubmission } from './types.js';
 
 /**
- * Minimal logger surface so Phase 6 modules don't have to import the
- * playbook-wide logger.ts (which transitively pulls in `ora` →
- * `cli-spinners` and breaks on Node < 20.10 due to import attributes).
+ * Special sentinel sequence number that bypasses the per-round reordering queue.
+ * Equivalent to nitro/timeboost/express_lane_service.go: `DontCareSequence = math.MaxUint64`.
  */
-export interface RunnerLogger {
-  event: (msg: string) => void;
-  info: (msg: string) => void;
-  warn: (msg: string) => void;
-}
-
-const activeLogger: RunnerLogger = {
-  event: (m) => console.log('•', m),
-  info: (m) => console.log('ℹ', m),
-  warn: (m) => console.log('⚠', m),
-};
+export const DONT_CARE_SEQUENCE = (1n << 64n) - 1n;
+import { signExpressLaneSubmission } from './expressLaneSigner.js';
+import { log, signRawTx } from './util.js';
 
 export interface ExpressLaneSubmitInput {
   /** Controller account (must be a LocalAccount<string>; needs to deterministically sign tx + envelope). */
@@ -118,7 +107,7 @@ export async function submitExpressLaneTransaction(input: ExpressLaneSubmitInput
   const sentAtMs = Date.now();
   await rawRpcCall(sequencerRpcUrl, 'timeboost_sendExpressLaneTransaction', [submission]);
 
-  activeLogger.event(`[${label}] express-lane tx submitted: ${txHash} (round=${round}, seq=${sequenceNumber})`);
+  log.event(`[${label}] express-lane tx submitted: ${txHash} (round=${round}, seq=${sequenceNumber})`);
 
   return { txHash, sentAtMs, rlpTx, submission };
 }

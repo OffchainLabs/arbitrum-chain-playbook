@@ -1,17 +1,9 @@
 /**
- * ABI bundles needed by the Timeboost playbook.
- *
- * No artifacts are vendored under this directory. Everything is imported
- * straight from `node_modules`:
- *   - ExpressLaneAuction (impl + events)  ← @arbitrum/nitro-contracts
- *   - TransparentUpgradeableProxy + ProxyAdmin  ← @openzeppelin/contracts
- *   - IERC20 (approve / transfer / balanceOf / ...)  ← @arbitrum/sdk
- *
- * The only hand-written fragment we still keep is the single-method `mint(address,uint256)`
- * ABI for our compiled-on-the-fly MintableERC20 (see compileBidToken.ts) — IERC20 has no
- * mint method, and pulling the full OpenZeppelin ERC20PresetMinterPauser ABI just for one
- * function is gratuitous. The bidding-token consumers concatenate `IERC20.abi` with this
- * fragment when they need to mint.
+ * ABI bundles for the Timeboost playbook, loaded from node_modules
+ * (ExpressLaneAuction ← nitro-contracts, proxies ← openzeppelin,
+ * IERC20 ← @arbitrum/sdk). The one hand-written fragment is
+ * `mint(address,uint256)` for the checked-in MintableERC20 artifact
+ * (see compileBidToken.ts) — IERC20 has no mint method.
  */
 
 import { createRequire } from 'node:module';

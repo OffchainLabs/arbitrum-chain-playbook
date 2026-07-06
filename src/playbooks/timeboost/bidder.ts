@@ -1,13 +1,6 @@
 /**
- * Phase 5a — Bidder.
- *
- * A bidder:
- *   1. ERC20.approve(auction, amount)
- *   2. auction.deposit(amount) — moves tokens from bidder to auction
- *   3. signs an EIP-712 Bid hash:
- *         Bid(uint64 round, address expressLaneController, uint256 amount)
- *      using the auction's `domainSeparator()` as the EIP-712 separator.
- *   4. POSTs the bid to the bid-validator's `auctioneer_submitBid` endpoint.
+ * Phase 5a — Bidder: approve + deposit bidding tokens, sign the EIP-712 Bid
+ * hash, POST it to the bid-validator's `auctioneer_submitBid` endpoint.
  *
  * Field layout MUST match nitro/timeboost/types.go:48-82 exactly. We hash the
  * struct ourselves (not via viem's `signTypedData`) because viem requires the

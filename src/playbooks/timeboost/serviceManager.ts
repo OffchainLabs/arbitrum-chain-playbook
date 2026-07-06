@@ -177,35 +177,38 @@ async function runDocker(args: string[]): Promise<string> {
   return (r?.raw ?? '').trim();
 }
 
-async function waitForRedis(timeoutMs = 15_000): Promise<void> {
+/** Poll `probe` every 500ms until it returns true or `timeoutMs` elapses. */
+async function pollUntil(probe: () => Promise<boolean>, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const r = (await dockerCommand(`exec ${REDIS_CONTAINER} redis-cli PING`, { echo: false })) as { raw?: string };
-      if (r?.raw?.includes('PONG')) return;
+      if (await probe()) return true;
     } catch {
-      // not yet up
+      // not ready yet
     }
     await sleep(500);
   }
-  throw new Error(`Redis did not become ready within ${timeoutMs}ms`);
+  return false;
+}
+
+async function waitForRedis(timeoutMs = 15_000): Promise<void> {
+  const ready = await pollUntil(async () => {
+    const r = (await dockerCommand(`exec ${REDIS_CONTAINER} redis-cli PING`, { echo: false })) as { raw?: string };
+    return !!r?.raw?.includes('PONG');
+  }, timeoutMs);
+  if (!ready) throw new Error(`Redis did not become ready within ${timeoutMs}ms`);
 }
 
 /**
- * Tail container logs and resolve when a matching line appears, or reject on timeout.
- * Used as a soft readiness gate; we don't fail the demo if the regex doesn't match —
- * the caller may proceed and let the next operation surface real failures.
+ * Soft readiness gate on container logs: we don't fail the demo if the regex
+ * never matches — the caller proceeds and lets the next operation surface
+ * real failures.
  */
 async function waitForLogLine(container: string, pattern: RegExp, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const r = (await dockerCommand(`logs --tail 200 ${container}`, { echo: false })) as { raw?: string };
-      if (r?.raw && pattern.test(r.raw)) return;
-    } catch {
-      // container may not be ready yet
-    }
-    await sleep(500);
-  }
-  log.warn(`Container ${container} did not log a line matching ${pattern} within ${timeoutMs}ms — continuing anyway`);
+  const ready = await pollUntil(async () => {
+    const r = (await dockerCommand(`logs --tail 200 ${container}`, { echo: false })) as { raw?: string };
+    return !!r?.raw && pattern.test(r.raw);
+  }, timeoutMs);
+  if (!ready)
+    log.warn(`Container ${container} did not log a line matching ${pattern} within ${timeoutMs}ms — continuing anyway`);
 }

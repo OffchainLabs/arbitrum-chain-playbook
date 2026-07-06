@@ -13,6 +13,7 @@ export const log = {
   success: (m: string) => console.log('✔', m),
   section: (m: string) => console.log('\n▸', m, '\n'),
   event: (m: string) => console.log('•', m),
+  raw: (m: string) => console.log(m),
 };
 
 export function sleep(ms: number): Promise<void> {

@@ -9,11 +9,16 @@
  * Mirrors nitro/timeboost/roundtiminginfo.go arithmetic.
  */
 
-export interface RoundTiming {
-  offsetTimestamp: number; // seconds
+/** Round timing knobs chosen at deploy time (before the on-chain offset exists). */
+export interface RoundTimingConfig {
   roundDurationSeconds: number;
   auctionClosingSeconds: number;
   reserveSubmissionSeconds: number;
+}
+
+/** Full timing info once the auction contract's offset timestamp is known. */
+export interface RoundTiming extends RoundTimingConfig {
+  offsetTimestamp: number; // seconds
 }
 
 export interface RoundSnapshot {
