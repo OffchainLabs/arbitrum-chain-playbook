@@ -22,7 +22,6 @@
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
     "test": "tsx --test \"tests/unit/**/*.spec.ts\"",
-    "test:docker": "RUN_DOCKER_TESTS=true tsx --test \"tests/docker/**/*.spec.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
     "run:script": "tsx src/scripted/runScript.ts",
@@ -45,11 +44,9 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/chai": "^5.2.3",
     "@types/inquirer": "8.2.10",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "20.10.0",
-    "chai": "4.3.10",
+    "@types/node": "^22.9.0",
     "prettier": "^3.2.0",
     "solc": "^0.8.33",
     "tsx": "^4.23.0",
