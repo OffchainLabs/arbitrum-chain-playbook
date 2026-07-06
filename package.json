@@ -18,14 +18,14 @@
     "node": ">=22 <23"
   },
   "scripts": {
-    "start": "node --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"ts-node/esm\", pathToFileURL(\"./\"));' src/index.ts",
+    "start": "tsx src/index.ts",
     "build": "tsc",
-    "dev": "node --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"ts-node/esm\", pathToFileURL(\"./\"));' --watch src/index.ts",
-    "test": "node --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"ts-node/esm\", pathToFileURL(\"./\"));' --test tests/**/*.ts",
-    "test:docker": "RUN_DOCKER_TESTS=true node --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"ts-node/esm\", pathToFileURL(\"./\"));' --test tests/core/docker/**/*.ts",
+    "dev": "tsx watch src/index.ts",
+    "test": "tsx --test \"tests/unit/**/*.spec.ts\"",
+    "test:docker": "RUN_DOCKER_TESTS=true tsx --test \"tests/docker/**/*.spec.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "run:script": "node --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"ts-node/esm\", pathToFileURL(\"./\"));' src/scripted/runScript.ts"
+    "run:script": "tsx src/scripted/runScript.ts"
   },
   "dependencies": {
     "@arbitrum/chain-sdk": "^v0.25.3",
@@ -51,7 +51,7 @@
     "@types/node": "20.10.0",
     "chai": "4.3.10",
     "prettier": "^3.2.0",
-    "ts-node": "10.9.2",
+    "tsx": "^4.23.0",
     "typescript": "5.3.2"
   }
 }
