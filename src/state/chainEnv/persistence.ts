@@ -105,9 +105,21 @@ export function loadChainDataFromDisk(): ChainData | null {
       return null;
     }
 
-    // Use the first discovered config file
-    // Prefer 'node-config' if available, otherwise use first found
-    configPath = discoveredConfigs.get('node-config') || discoveredConfigs.values().next().value;
+    // The primary slot must be the canonical node-config.json. Falling back to
+    // a discovered sibling (e.g. a stale node-config-malicious.json left over
+    // from a BoLD demo — nothing ever deletes those) would silently promote
+    // that config to the main chain, so warn loudly when we do.
+    const primary = discoveredConfigs.get('node-config');
+    if (primary) {
+      configPath = primary;
+    } else {
+      const [fallbackName, fallbackPath] = [...discoveredConfigs.entries()][0];
+      console.warn(
+        `[persistence] node-config.json not found; falling back to discovered config '${fallbackName}'. ` +
+          `If this is a stale malicious/honest config from a prior demo, delete it or redeploy.`,
+      );
+      configPath = fallbackPath;
+    }
   }
 
   if (!fs.existsSync(configPath)) {

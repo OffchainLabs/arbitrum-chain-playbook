@@ -7,7 +7,7 @@
  */
 
 import net from 'net';
-import { dockerCommand } from 'docker-cli-js';
+import { quietDockerCommand } from './dockerCli.js';
 import { extractHttpPortFromConfigPath, extractWsPortFromConfigPath } from './nodeConfigExtractors.js';
 
 /** Parse `docker ps --format "{{.Ports}}"` output into the set of host ports in use. */
@@ -55,7 +55,7 @@ export async function findAvailablePorts(
 ): Promise<{ httpPort: number; wsPort: number }> {
   let usedPorts = new Set<number>();
   try {
-    const ps = await dockerCommand('ps --format "{{.Ports}}"');
+    const ps = await quietDockerCommand('ps --format "{{.Ports}}"');
     usedPorts = parseDockerPsPorts((ps as any)?.raw ?? '');
   } catch (error) {
     usedPorts = new Set<number>();

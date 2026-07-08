@@ -18,7 +18,7 @@
  * `--auctioneer-server.sequencer-endpoint`.
  */
 
-import { dockerCommand } from 'docker-cli-js';
+import { quietDockerCommand } from '../../core/docker/dockerCli.js';
 import type { Address } from 'viem';
 import { log, sleep } from './util.js';
 
@@ -161,7 +161,7 @@ export async function startTimeboostServices(cfg: ServiceManagerConfig): Promise
 export async function stopTimeboostServices(): Promise<void> {
   for (const name of [AUCTIONEER_CONTAINER, BID_VALIDATOR_CONTAINER, REDIS_CONTAINER]) {
     try {
-      await dockerCommand(`rm -f ${name}`, { echo: false });
+      await quietDockerCommand(`rm -f ${name}`);
     } catch {
       // container probably wasn't running — ignore
     }
@@ -173,7 +173,7 @@ export async function stopTimeboostServices(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function runDocker(args: string[]): Promise<string> {
-  const r = (await dockerCommand(args.join(' '), { echo: false })) as { raw?: string };
+  const r = (await quietDockerCommand(args.join(' '))) as { raw?: string };
   return (r?.raw ?? '').trim();
 }
 
@@ -193,7 +193,7 @@ async function pollUntil(probe: () => Promise<boolean>, timeoutMs: number): Prom
 
 async function waitForRedis(timeoutMs = 15_000): Promise<void> {
   const ready = await pollUntil(async () => {
-    const r = (await dockerCommand(`exec ${REDIS_CONTAINER} redis-cli PING`, { echo: false })) as { raw?: string };
+    const r = (await quietDockerCommand(`exec ${REDIS_CONTAINER} redis-cli PING`)) as { raw?: string };
     return !!r?.raw?.includes('PONG');
   }, timeoutMs);
   if (!ready) throw new Error(`Redis did not become ready within ${timeoutMs}ms`);
@@ -206,7 +206,7 @@ async function waitForRedis(timeoutMs = 15_000): Promise<void> {
  */
 async function waitForLogLine(container: string, pattern: RegExp, timeoutMs: number): Promise<void> {
   const ready = await pollUntil(async () => {
-    const r = (await dockerCommand(`logs --tail 200 ${container}`, { echo: false })) as { raw?: string };
+    const r = (await quietDockerCommand(`logs --tail 200 ${container}`)) as { raw?: string };
     return !!r?.raw && pattern.test(r.raw);
   }, timeoutMs);
   if (!ready)

@@ -7,7 +7,7 @@ import { ChainEnv } from './state/chainEnv/index.js';
 import { SendersEnv, SenderRole } from './state/sendersEnv/index.js';
 import { loadChainFromTxHash } from './state/chainEnv/fromTxHash.js';
 import { getNodeConfigPath } from './utils/nodeConfigUtils.js';
-import { parseDeploymentTx } from './utils/deploymentTx.js';
+import { fetchChainIdFromDeploymentTx } from './utils/deploymentTx.js';
 import { getAppConfig, hasDeployerKey, getDeploymentTxHash } from './config/index.js';
 
 export function initializeApp(): void {
@@ -110,8 +110,7 @@ async function fetchChainIdFromTxHash(): Promise<bigint> {
     throw new Error('Parent chain client is not initialized.');
   }
 
-  const { chainConfig } = await parseDeploymentTx(parentChainPublicClient, txHash);
-  return BigInt(chainConfig.chainId);
+  return fetchChainIdFromDeploymentTx(parentChainPublicClient, txHash);
 }
 
 function readChainIdFromNodeConfig(): bigint {

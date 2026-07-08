@@ -14,12 +14,10 @@ import { SendersEnv, SenderRole } from '../state/sendersEnv/index.js';
 import { NodeInstance, NodeManagerLike, NodeType } from '../types/index.js';
 import { LOCAL_DATA_DIR } from '../types/constants.js';
 import logger from '../utils/logger.js';
-import { type OperationContext } from '../utils/cancellation.js';
+import { cancellableSleep, type OperationContext } from '../utils/cancellation.js';
 import { getParentChain } from '../utils/parentChain.js';
 import { deployChain } from '../core/deployChain/deployChain.js';
 import { depositEthToInbox } from '../core/interactChain/depositToL2.js';
-
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Get the main sender's (RegularSender) private key, or throw with an
@@ -99,7 +97,8 @@ export async function ensureMainNode(nodeManager: NodeManagerLike): Promise<Node
   if (running) return running;
   const started = await nodeManager.startNode(NodeType.MAIN);
   if (!started) throw new Error('Failed to start MAIN sequencer node.');
-  await sleep(8000);
+  // No fixed sleep here — the sole caller polls waitForChildRpcReady right
+  // after, which is the real readiness gate. A blind sleep was dead time.
   return started;
 }
 
@@ -132,7 +131,7 @@ export async function waitForChildRpcReady(url: string, timeoutMs = 180_000): Pr
     } catch (e) {
       lastErr = e instanceof Error ? e.message : String(e);
     }
-    await sleep(500);
+    await cancellableSleep(500);
   }
   throw new Error(`child RPC ${url} not ready after ${timeoutMs}ms (last: ${lastErr})`);
 }
@@ -200,7 +199,7 @@ export async function topUpDeployerOnL2(args: {
       logger.success(`L2 deployer balance now ${formatEther(b)} ETH`);
       return;
     }
-    await sleep(4000);
+    await cancellableSleep(4000);
   }
   throw new Error('Timed out waiting for L1 → L2 deposit to surface (4 min).');
 }

@@ -23,11 +23,9 @@ import { stopTimeboostServices } from './serviceManager.js';
 async function viewTimeboostStatus(): Promise<void> {
   logger.section('Timeboost services');
   try {
-    // Lazy-load `dockerCommand` to avoid pulling docker-cli-js on import-time.
-    const { dockerCommand } = await import('docker-cli-js');
-    const r = await dockerCommand('ps --filter name=timeboost- --format "{{.Names}} {{.Status}}"', {
-      echo: false,
-    });
+    // Lazy-load the docker wrapper to avoid pulling docker-cli-js on import-time.
+    const { quietDockerCommand } = await import('../../core/docker/dockerCli.js');
+    const r = await quietDockerCommand('ps --filter name=timeboost- --format "{{.Names}} {{.Status}}"');
     logger.raw(((r as { raw?: string })?.raw ?? '<no timeboost services running>').trim());
   } catch (e) {
     logger.warn(`docker query failed: ${e instanceof Error ? e.message : String(e)}`);

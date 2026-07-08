@@ -1,7 +1,7 @@
 import inquirer from 'inquirer';
 import { formatEther, parseEther, type Address } from 'viem';
 import { existsSync } from 'fs';
-import { copyFile, rm, readdir } from 'fs/promises';
+import { copyFile, readdir } from 'fs/promises';
 import { execSync } from 'child_process';
 import path from 'path';
 import { Playbook, PlaybookActionResult, HeadlessCommandSpec } from '../types.js';
@@ -12,6 +12,7 @@ import { overwriteNodeConfigFile } from '../../core/nodeConfig/nodeConfigOperati
 import { ChainEnv } from '../../state/chainEnv/index.js';
 import { runMaliciousMintDemo } from './maliciousMintRunner.js';
 import { runChallengeDemo } from './challengeRunner.js';
+import { wipeLocalChainData } from '../runnerKit.js';
 import { getRollupStatus } from './monitor.js';
 import {
   DEFAULT_MALICIOUS_MINT_CONFIG,
@@ -119,14 +120,18 @@ class MaliciousValidatorPlaybook implements Playbook {
     let localDbDirty = false;
     try {
       const entries = await readdir(chainDir);
-      localDbDirty = entries.some((e) => e !== '.DS_Store');
+      // core-contracts.json is persisted chain metadata (written at deploy
+      // time), not leftover node DB state — exempt it exactly as
+      // wipeLocalChainData does, or every restart would delete it.
+      localDbDirty = entries.some((e) => e !== '.DS_Store' && e !== 'core-contracts.json');
     } catch {
       // Directory does not exist — already clean.
     }
 
     if (localDbDirty) {
       logger.info(`Local DB has leftover data. Cleaning ${chainDir}...`);
-      await rm(chainDir, { recursive: true, force: true });
+      // wipeLocalChainData spares core-contracts.json so persistence survives.
+      wipeLocalChainData(chainId);
       logger.success('Local DB cleaned.');
     }
 

@@ -45,7 +45,7 @@ If the user wants to **add a new playbook** or **understand the architecture**, 
 
 The command list above mirrors `listHeadlessCommands()` in each playbook — see also the table in README.md. Example scripts for every command live in `examples/`.
 
-**Both spend real Arbitrum Sepolia ETH.** Confirm with the user before kicking off a run unless they explicitly asked.
+**All three spend real Arbitrum Sepolia ETH.** Confirm with the user before kicking off a run unless they explicitly asked.
 
 ---
 
@@ -54,8 +54,9 @@ The command list above mirrors `listHeadlessCommands()` in each playbook — see
 Run all five before starting. Each takes < 1 second except the image build (skip-if-cached).
 
 ```bash
-# 1. Node version (must be 22.x — Node 23+ breaks ts-node/esm, see package.json engines)
-node --version | grep -E 'v22\.'
+# 1. Node version (Node 22+; engines pins ">=22". The repo runs on tsx, so
+#    Node 23/24 work too — CI pins 22 for reproducibility.)
+node --version
 
 # 2. Docker daemon up
 docker info > /dev/null 2>&1 && echo OK

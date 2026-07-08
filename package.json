@@ -15,11 +15,11 @@
   "type": "module",
   "main": "dist/index.js",
   "engines": {
-    "node": ">=22 <23"
+    "node": ">=22"
   },
   "scripts": {
     "start": "tsx src/index.ts",
-    "build": "tsc",
+    "build": "tsc && mkdir -p dist/playbooks/timeboost/artifacts && cp src/playbooks/timeboost/artifacts/*.json dist/playbooks/timeboost/artifacts/",
     "dev": "tsx watch src/index.ts",
     "test": "tsx --test \"tests/unit/**/*.spec.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",

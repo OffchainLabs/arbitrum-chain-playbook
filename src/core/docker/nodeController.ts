@@ -6,7 +6,7 @@
  */
 
 import inquirer from 'inquirer';
-import { NodeType, NodeAction, NodeManagerLike } from '../../types/index.js';
+import { NodeType, NodeAction, NodeManagerLike, OperationMode } from '../../types/index.js';
 import { ChainEnv } from '../../state/chainEnv/index.js';
 import logger from '../../utils/logger.js';
 import { waitForEnter } from '../../utils/inquirerUtils.js';
@@ -56,6 +56,14 @@ export class NodeController {
     const chainId = this.chainEnv.chainConfig.getChainId();
     logger.info(`Managing nodes for Chain ID: ${chainId}`);
 
+    // In devnode mode this generic menu drives a local dev node, so label the
+    // start action for what it actually launches instead of a chain-mode
+    // sequencer stack.
+    const startLabel =
+      this.chainEnv.operationMode === OperationMode.DEVNODE
+        ? `Start Devnode ${chalk.dim('— Local Nitro dev node')}`
+        : `Start Main Node ${chalk.dim('— Sequencer, batch poster, and staker')}`;
+
     breadcrumb.push('Manage Nodes');
     while (true) {
       breadcrumb.render();
@@ -66,7 +74,7 @@ export class NodeController {
           message: 'Select action:',
           choices: [
             {
-              name: `Start Main Node ${chalk.dim('— Sequencer, batch poster, and staker')}`,
+              name: startLabel,
               value: NodeAction.START_MAIN,
             },
             new inquirer.Separator(),

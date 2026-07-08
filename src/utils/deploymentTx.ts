@@ -23,12 +23,29 @@ export interface ParsedDeploymentTx {
 }
 
 export async function parseDeploymentTx(client: PublicClient, txHash: `0x${string}`): Promise<ParsedDeploymentTx> {
-  const tx = createRollupPrepareTransaction(await client.getTransaction({ hash: txHash }));
-  const txReceipt = createRollupPrepareTransactionReceipt(await client.getTransactionReceipt({ hash: txHash }));
+  // tx and receipt fetches are independent — run them concurrently.
+  const [txRaw, receiptRaw] = await Promise.all([
+    client.getTransaction({ hash: txHash }),
+    client.getTransactionReceipt({ hash: txHash }),
+  ]);
+  const tx = createRollupPrepareTransaction(txRaw);
+  const txReceipt = createRollupPrepareTransactionReceipt(receiptRaw);
 
   const rollupConfig = tx.getInputs()[0].config;
   const chainConfig: ChainConfig = JSON.parse(rollupConfig.chainConfig);
   const coreContracts: CoreContracts = txReceipt.getCoreContracts();
 
   return { chainConfig, coreContracts, rollupConfig };
+}
+
+/**
+ * Lightweight chain-id probe: reads only the createRollup tx inputs, skipping
+ * the receipt fetch + core-contracts decode that {@link parseDeploymentTx}
+ * pays for. Used by startup paths that only need the chain id, so a pruned RPC
+ * (no receipt) or an undecodable RollupCreated event doesn't abort them.
+ */
+export async function fetchChainIdFromDeploymentTx(client: PublicClient, txHash: `0x${string}`): Promise<bigint> {
+  const tx = createRollupPrepareTransaction(await client.getTransaction({ hash: txHash }));
+  const chainConfig: ChainConfig = JSON.parse(tx.getInputs()[0].config.chainConfig);
+  return BigInt(chainConfig.chainId);
 }
