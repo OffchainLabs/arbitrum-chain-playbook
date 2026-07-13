@@ -35,7 +35,7 @@ export class DevnodeNodeManager {
   }
 
   async getNodeUptime(_nodeId: string): Promise<string> {
-    return 'unknown';
+    return this.devnodeManager.getDevnodeUptime();
   }
 
   // The devnode is a single dev container; there is no background health loop.
