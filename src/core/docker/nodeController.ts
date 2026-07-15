@@ -6,12 +6,12 @@
  */
 
 import inquirer from 'inquirer';
-import { NodeType, NodeAction, NodeManagerLike } from '../../types/index.js';
+import { NodeType, NodeAction, NodeManagerLike, OperationMode } from '../../types/index.js';
 import { ChainEnv } from '../../state/chainEnv/index.js';
 import logger from '../../utils/logger.js';
 import { waitForEnter } from '../../utils/inquirerUtils.js';
 import { breadcrumb } from '../../utils/breadcrumb.js';
-import { guard } from '../../utils/guards.js';
+import { requireChainInitiated } from '../../utils/guards.js';
 import chalk from 'chalk';
 
 /**
@@ -33,7 +33,7 @@ export class NodeController {
    * Show the interactive node management menu
    */
   async showManagementMenu(): Promise<void> {
-    if (!guard.requireChainInitiated()) {
+    if (!requireChainInitiated()) {
       return;
     }
 
@@ -50,11 +50,19 @@ export class NodeController {
     await nodeManager.discoverExistingContainers();
 
     // Stop health monitoring to avoid spam during menu interaction
-    const wasMonitoring = nodeManager.isMonitoringActive?.() ?? nodeManager.getRunningNodes().length > 0;
-    nodeManager.stopHealthMonitoring?.();
+    const wasMonitoring = nodeManager.isMonitoringActive();
+    nodeManager.stopHealthMonitoring();
 
     const chainId = this.chainEnv.chainConfig.getChainId();
     logger.info(`Managing nodes for Chain ID: ${chainId}`);
+
+    // In devnode mode this generic menu drives a local dev node, so label the
+    // start action for what it actually launches instead of a chain-mode
+    // sequencer stack.
+    const startLabel =
+      this.chainEnv.operationMode === OperationMode.DEVNODE
+        ? `Start Devnode ${chalk.dim('— Local Nitro dev node')}`
+        : `Start Main Node ${chalk.dim('— Sequencer, batch poster, and staker')}`;
 
     breadcrumb.push('Manage Nodes');
     while (true) {
@@ -66,11 +74,10 @@ export class NodeController {
           message: 'Select action:',
           choices: [
             {
-              name: `Start Main Node ${chalk.dim('— Sequencer, batch poster, and staker')}`,
+              name: startLabel,
               value: NodeAction.START_MAIN,
             },
             new inquirer.Separator(),
-            { name: 'Monitor Node Health', value: 'monitor_health', disabled: 'Not supported yet' },
             { name: `View Node Details ${chalk.dim('— Inspect a running node')}`, value: 'node_details' },
             new inquirer.Separator(),
             { name: `Stop a Node ${chalk.dim('— Stop a specific running node')}`, value: NodeAction.STOP_NODE },
@@ -114,7 +121,7 @@ export class NodeController {
           breadcrumb.pop();
           // Restart monitoring when exiting if nodes are running and monitoring was active
           if (nodeManager.getRunningNodes().length > 0 && wasMonitoring) {
-            await nodeManager.startHealthMonitoring?.();
+            await nodeManager.startHealthMonitoring();
           }
           return;
       }
@@ -205,13 +212,10 @@ export class NodeController {
     logger.raw(`  Container ID: ${node.containerId || 'Not available'}`);
     logger.raw(`  HTTP Endpoint: http://localhost:${node.config.httpPort}`);
 
-    // Health and uptime are checked via NodeManager if available
-    if (nodeManager.checkNodeHealth && nodeManager.getNodeUptime) {
-      const isHealthy = await nodeManager.checkNodeHealth(selectedNode);
-      const uptime = await nodeManager.getNodeUptime(selectedNode);
-      logger.raw(`  Health:       ${isHealthy ? '🟢 Healthy' : '🔴 Unhealthy'}`);
-      logger.raw(`  Uptime:       ${uptime}`);
-    }
+    const isHealthy = await nodeManager.checkNodeHealth(selectedNode);
+    const uptime = await nodeManager.getNodeUptime(selectedNode);
+    logger.raw(`  Health:       ${isHealthy ? '🟢 Healthy' : '🔴 Unhealthy'}`);
+    logger.raw(`  Uptime:       ${uptime}`);
 
     await waitForEnter('Press Enter to continue...');
   }

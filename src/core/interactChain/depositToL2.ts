@@ -61,6 +61,37 @@ function getInboxAddress(chainEnv: ChainEnv): `0x${string}` | null {
 }
 
 /**
+ * Non-interactive deposit primitive: send `depositEth` on the Inbox and wait
+ * for the receipt. Shared by the interactive deposit menu and deployChain's
+ * post-deploy L2 funding step. Throws on failure.
+ */
+export async function depositEthToInbox(params: {
+  account: PrivateKeyAccount;
+  parentChainPublicClient: PublicClient;
+  parentRpcUrl: string;
+  inboxAddress: `0x${string}`;
+  amountEth: string;
+}): Promise<`0x${string}`> {
+  const parentWalletClient = createWalletClient({
+    account: params.account,
+    chain: params.parentChainPublicClient.chain,
+    transport: http(params.parentRpcUrl),
+  });
+
+  const depositHash = await parentWalletClient.writeContract({
+    address: params.inboxAddress,
+    abi: inboxAbi,
+    functionName: 'depositEth',
+    value: parseEther(params.amountEth),
+    chain: params.parentChainPublicClient.chain,
+  });
+
+  await params.parentChainPublicClient.waitForTransactionReceipt({ hash: depositHash });
+  logger.txHash(depositHash, 'depositEth', 'success');
+  return depositHash;
+}
+
+/**
  * Deposit native token from parent chain to L2 via Inbox.
  */
 export async function depositNativeTokenToL2(amountEth: string): Promise<`0x${string}` | null> {
@@ -87,23 +118,13 @@ export async function depositNativeTokenToL2(amountEth: string): Promise<`0x${st
   if (!inboxAddress) return null;
 
   try {
-    const value = parseEther(amountEth);
-    const parentWalletClient = createWalletClient({
+    const depositHash = await depositEthToInbox({
       account: signer,
-      chain: parentChainPublicClient.chain,
-      transport: http(parentRpc),
+      parentChainPublicClient,
+      parentRpcUrl: parentRpc,
+      inboxAddress,
+      amountEth,
     });
-
-    const depositHash = await parentWalletClient.writeContract({
-      address: inboxAddress,
-      abi: inboxAbi,
-      functionName: 'depositEth',
-      value,
-      chain: parentChainPublicClient.chain,
-    });
-
-    await parentChainPublicClient.waitForTransactionReceipt({ hash: depositHash });
-    logger.txHash(depositHash, 'depositEth', 'success');
     logger.success(`Deposited ${amountEth} ETH to L2 via Inbox`);
     return depositHash;
   } catch (error) {

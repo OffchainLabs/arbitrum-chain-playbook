@@ -39,7 +39,7 @@ import {
 import logger from '../../utils/logger.js';
 import { StepTracker } from '../../utils/ui.js';
 import { type OperationContext, cancellableSleep } from '../../utils/cancellation.js';
-import { deployChain } from '../../core/deployChain/deployChain.js';
+import { getMainSenderPrivateKey, getParentChainRpcUrl, redeployFreshChain } from '../runnerKit.js';
 import {
   overwriteToNodeConfigForMainNode,
   overwriteToNodeConfigForMaliciousValidator,
@@ -84,14 +84,9 @@ function getEnvConfig(): {
   mainPrivateKey: `0x${string}`;
   parentChainRpc: string;
 } {
-  const sendersEnv = SendersEnv.getInstance();
-  const mainSenders = sendersEnv.getAllByRole(SenderRole.RegularSender);
-  if (mainSenders.length === 0) {
-    throw new Error('No RegularSender account found. Please add a sender account first.');
-  }
   return {
-    mainPrivateKey: mainSenders[0].privateKey,
-    parentChainRpc: process.env.PARENT_CHAIN_RPC || 'https://sepolia-rollup.arbitrum.io/rpc',
+    mainPrivateKey: getMainSenderPrivateKey(),
+    parentChainRpc: getParentChainRpcUrl(),
   };
 }
 
@@ -177,6 +172,128 @@ async function healthCheckedSleep(
 }
 
 /**
+ * Convert a little ETH to WETH for both validators and approve the
+ * EdgeChallengeManager to spend it — required for BoLD staking. Best-effort:
+ * logs and continues past any per-validator failure. No-op when core contracts
+ * aren't available or the stake token is native ETH.
+ */
+async function convertValidatorsEthToWeth(): Promise<void> {
+  const chainEnv = ChainEnv.getInstance();
+  const coreContracts = chainEnv.chainConfig.getCoreContracts();
+  if (coreContracts) {
+    const envConfig = getEnvConfig();
+    const parentChainForWeth = getParentChain();
+    const parentClientForWeth = createPublicClient({
+      chain: parentChainForWeth,
+      transport: http(envConfig.parentChainRpc),
+    });
+
+    // Read stakeToken address from rollup contract
+    const rollupAddr = coreContracts.rollup as Address;
+    let stakeTokenAddress: Address | null = null;
+    try {
+      stakeTokenAddress = (await parentClientForWeth.readContract({
+        address: rollupAddr,
+        abi: rollupCoreAbi,
+        functionName: 'stakeToken',
+      })) as Address;
+    } catch (error) {
+      logger.warn(`Failed to read stakeToken from rollup: ${error}`);
+    }
+
+    if (stakeTokenAddress && stakeTokenAddress !== '0x0000000000000000000000000000000000000000') {
+      const wethDepositAbi = [
+        {
+          inputs: [],
+          name: 'deposit',
+          outputs: [],
+          stateMutability: 'payable',
+          type: 'function',
+        },
+      ] as const;
+
+      const sendersEnvForWeth = SendersEnv.getInstance();
+      const validators = sendersEnvForWeth.getAllByRole(SenderRole.Validator);
+      const wethAmount = parseEther('0.001');
+
+      logger.info(
+        `Converting 0.001 ETH to WETH for ${validators.length} validators (stakeToken: ${stakeTokenAddress})...`,
+      );
+      for (const validator of validators) {
+        try {
+          const wallet = createWalletClient({
+            account: validator.signer,
+            chain: parentChainForWeth,
+            transport: http(envConfig.parentChainRpc),
+          });
+          const hash = await wallet.writeContract({
+            address: stakeTokenAddress,
+            abi: wethDepositAbi,
+            functionName: 'deposit',
+            value: wethAmount,
+          });
+          await parentClientForWeth.waitForTransactionReceipt({ hash });
+          logger.success(`  ${validator.signer.address}: 0.001 ETH -> WETH (tx: ${hash.slice(0, 18)}...)`);
+        } catch (error) {
+          logger.warn(`  Failed WETH deposit for ${validator.signer.address}: ${error}`);
+        }
+      }
+
+      // Approve EdgeChallengeManager to spend WETH for both validators
+      let challengeManagerAddr: Address | null = null;
+      try {
+        challengeManagerAddr = (await parentClientForWeth.readContract({
+          address: rollupAddr,
+          abi: rollupCoreAbi,
+          functionName: 'challengeManager',
+        })) as Address;
+      } catch (error) {
+        logger.warn(`Failed to read challengeManager address: ${error}`);
+      }
+
+      if (challengeManagerAddr) {
+        const erc20ApproveAbi = [
+          {
+            inputs: [
+              { internalType: 'address', name: 'spender', type: 'address' },
+              { internalType: 'uint256', name: 'amount', type: 'uint256' },
+            ],
+            name: 'approve',
+            outputs: [{ internalType: 'bool', name: '', type: 'bool' }],
+            stateMutability: 'nonpayable',
+            type: 'function',
+          },
+        ] as const;
+
+        const maxApproval = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
+        logger.info(`Approving EdgeChallengeManager (${challengeManagerAddr}) to spend WETH...`);
+        for (const validator of validators) {
+          try {
+            const wallet = createWalletClient({
+              account: validator.signer,
+              chain: parentChainForWeth,
+              transport: http(envConfig.parentChainRpc),
+            });
+            const hash = await wallet.writeContract({
+              address: stakeTokenAddress,
+              abi: erc20ApproveAbi,
+              functionName: 'approve',
+              args: [challengeManagerAddr, maxApproval],
+            });
+            await parentClientForWeth.waitForTransactionReceipt({ hash });
+            logger.success(`  ${validator.signer.address}: approved (tx: ${hash.slice(0, 18)}...)`);
+          } catch (error) {
+            logger.warn(`  Failed approve for ${validator.signer.address}: ${error}`);
+          }
+        }
+      }
+    } else {
+      logger.info('stakeToken is ETH (address(0)), skipping WETH conversion.');
+    }
+  }
+}
+
+/**
  * Run the challenge demo
  *
  * 8-step flow:
@@ -226,160 +343,13 @@ export async function runChallengeDemo(
   ctx?.stepStarted('Redeploy chain');
   tracker.start();
 
-  // Stop all running nodes before redeployment
-  const nodeManager = chainEnv.nodeManager;
-  if (nodeManager) {
-    const runningNodes = nodeManager.getRunningNodes();
-    if (runningNodes.length > 0) {
-      logger.info(`Stopping ${runningNodes.length} running node(s)...`);
-      await nodeManager.stopAllNodes();
-      logger.success('All nodes stopped.');
-    }
-  }
-
-  // Deploy fresh chain with challenge-specific confirmPeriodBlocks
-  logger.info(`Deploying chain with confirmPeriodBlocks=${CHALLENGE_CONFIRM_PERIOD_BLOCKS}...`);
-  const parentChain = getParentChain();
-  const deploySuccess = await deployChain(parentChain, ctx, {
-    confirmPeriodBlocks: CHALLENGE_CONFIRM_PERIOD_BLOCKS,
-    skipPrompts: true,
-  });
-
-  if (!deploySuccess) {
+  if (!(await redeployFreshChain(CHALLENGE_CONFIRM_PERIOD_BLOCKS, ctx))) {
     tracker.fail();
-    logger.errorWithFix('Chain deployment failed.', 'Check PARENT_CHAIN_RPC and MAIN_PRIVATE_KEY in .env file.');
     return result;
   }
 
-  // Reload chain env after deployment
-  if (!chainEnv.status.isInitiated()) {
-    if (!chainEnv.load()) {
-      tracker.fail();
-      logger.errorWithFix(
-        'Failed to load chain after deployment.',
-        'Check that node-config.json was created successfully.',
-      );
-      return result;
-    }
-  }
-
-  logger.success('Chain deployed successfully.');
-
   // Convert ETH to WETH for both validators (required for BoLD staking)
-  {
-    const coreContracts = chainEnv.chainConfig.getCoreContracts();
-    if (coreContracts) {
-      const envConfig = getEnvConfig();
-      const parentChainForWeth = getParentChain();
-      const parentClientForWeth = createPublicClient({
-        chain: parentChainForWeth,
-        transport: http(envConfig.parentChainRpc),
-      });
-
-      // Read stakeToken address from rollup contract
-      const rollupAddr = coreContracts.rollup as Address;
-      let stakeTokenAddress: Address | null = null;
-      try {
-        stakeTokenAddress = (await parentClientForWeth.readContract({
-          address: rollupAddr,
-          abi: rollupCoreAbi,
-          functionName: 'stakeToken',
-        })) as Address;
-      } catch (error) {
-        logger.warn(`Failed to read stakeToken from rollup: ${error}`);
-      }
-
-      if (stakeTokenAddress && stakeTokenAddress !== '0x0000000000000000000000000000000000000000') {
-        const wethDepositAbi = [
-          {
-            inputs: [],
-            name: 'deposit',
-            outputs: [],
-            stateMutability: 'payable',
-            type: 'function',
-          },
-        ] as const;
-
-        const sendersEnvForWeth = SendersEnv.getInstance();
-        const validators = sendersEnvForWeth.getAllByRole(SenderRole.Validator);
-        const wethAmount = parseEther('0.001');
-
-        logger.info(
-          `Converting 0.001 ETH to WETH for ${validators.length} validators (stakeToken: ${stakeTokenAddress})...`,
-        );
-        for (const validator of validators) {
-          try {
-            const wallet = createWalletClient({
-              account: validator.signer,
-              chain: parentChainForWeth,
-              transport: http(envConfig.parentChainRpc),
-            });
-            const hash = await wallet.writeContract({
-              address: stakeTokenAddress,
-              abi: wethDepositAbi,
-              functionName: 'deposit',
-              value: wethAmount,
-            });
-            await parentClientForWeth.waitForTransactionReceipt({ hash });
-            logger.success(`  ${validator.signer.address}: 0.001 ETH -> WETH (tx: ${hash.slice(0, 18)}...)`);
-          } catch (error) {
-            logger.warn(`  Failed WETH deposit for ${validator.signer.address}: ${error}`);
-          }
-        }
-
-        // Approve EdgeChallengeManager to spend WETH for both validators
-        let challengeManagerAddr: Address | null = null;
-        try {
-          challengeManagerAddr = (await parentClientForWeth.readContract({
-            address: rollupAddr,
-            abi: rollupCoreAbi,
-            functionName: 'challengeManager',
-          })) as Address;
-        } catch (error) {
-          logger.warn(`Failed to read challengeManager address: ${error}`);
-        }
-
-        if (challengeManagerAddr) {
-          const erc20ApproveAbi = [
-            {
-              inputs: [
-                { internalType: 'address', name: 'spender', type: 'address' },
-                { internalType: 'uint256', name: 'amount', type: 'uint256' },
-              ],
-              name: 'approve',
-              outputs: [{ internalType: 'bool', name: '', type: 'bool' }],
-              stateMutability: 'nonpayable',
-              type: 'function',
-            },
-          ] as const;
-
-          const maxApproval = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
-          logger.info(`Approving EdgeChallengeManager (${challengeManagerAddr}) to spend WETH...`);
-          for (const validator of validators) {
-            try {
-              const wallet = createWalletClient({
-                account: validator.signer,
-                chain: parentChainForWeth,
-                transport: http(envConfig.parentChainRpc),
-              });
-              const hash = await wallet.writeContract({
-                address: stakeTokenAddress,
-                abi: erc20ApproveAbi,
-                functionName: 'approve',
-                args: [challengeManagerAddr, maxApproval],
-              });
-              await parentClientForWeth.waitForTransactionReceipt({ hash });
-              logger.success(`  ${validator.signer.address}: approved (tx: ${hash.slice(0, 18)}...)`);
-            } catch (error) {
-              logger.warn(`  Failed approve for ${validator.signer.address}: ${error}`);
-            }
-          }
-        }
-      } else {
-        logger.info('stakeToken is ETH (address(0)), skipping WETH conversion.');
-      }
-    }
-  }
+  await convertValidatorsEthToWeth();
 
   ctx?.stepCompleted('Redeploy chain');
 

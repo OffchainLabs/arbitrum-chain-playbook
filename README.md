@@ -30,7 +30,7 @@ If you want to know the structure of this project and how to add playbooks, plea
 
 ## Prerequisites
 
-- **Node.js** v23 or higher
+- **Node.js** v22.x (pinned via `engines` in package.json; CI runs 22)
 - **Docker** (for running Nitro nodes)
 - **Yarn** or **npm**
 
@@ -142,7 +142,6 @@ MAIN_PRIVATE_KEY=0x...  # Optional, for signing transactions
 |--------|-------------|--------------|
 | **Deploy New Chain** | Deploy an Orbit chain to parent chain | Chain Mode |
 | **Manage Nodes** | Start/stop/monitor main Nitro nodes | Chain, Devnode |
-
 | **Interact with Chain** | Send transactions, query state | All Modes |
 | **View Status** | Display chain and node information | All Modes |
 | **Node Config Operations** | Modify node configuration files | Chain Mode |
@@ -189,6 +188,7 @@ ETH amounts in `params` are accepted as decimal strings (e.g. `"0.05"`) or numbe
 |---|---|---|
 | `malicious-validator` | `malicious-mint` | chain |
 | `malicious-validator` | `bold-challenge` | chain |
+| `timeboost` | `run-full-demo` | chain |
 
 **Output**:
 
@@ -238,4 +238,4 @@ CHAIN_DEPLOYMENT_TRANSACTION_HASH=0x1234...
 
 ## For Developers
 
-For architecture details, API documentation, and how to add new playbooks, see [README-DEV.md](./README-DEV.md).
+For architecture details, API documentation, and how to add new playbooks, see [readme-dev.md](./readme-dev.md).

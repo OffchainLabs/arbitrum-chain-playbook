@@ -1,5 +1,5 @@
 import { ChainConfig, NodeConfig } from '@arbitrum/chain-sdk';
-import { ChainEnv, setNodeManagerClass } from '../state/chainEnv/index.js';
+import { ChainEnv } from '../state/chainEnv/index.js';
 import { SendersEnv, SenderRole } from '../state/sendersEnv/index.js';
 import { OperationMode } from '../types/index.js';
 import logger from '../utils/logger.js';
@@ -11,8 +11,8 @@ export async function enterDevnodeMode(): Promise<void> {
   const chainEnv = ChainEnv.getInstance();
   const sendersEnv = SendersEnv.getInstance();
 
-  setNodeManagerClass(DevnodeNodeManager);
   chainEnv.setOperationMode(OperationMode.DEVNODE);
+  chainEnv.setNodeManager(new DevnodeNodeManager(chainEnv));
 
   const chainConfig = { chainId: DEVNODE_CONFIG.chainId } as ChainConfig;
   const nodeConfig = {} as NodeConfig;

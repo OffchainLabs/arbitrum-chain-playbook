@@ -41,8 +41,11 @@ If the user wants to **add a new playbook** or **understand the architecture**, 
 |---|---|---|---|---|
 | `malicious-validator` | `malicious-mint` | chain | 7–10 min | ~0.06 ETH |
 | `malicious-validator` | `bold-challenge` | chain | 30–90 min | ~0.10 ETH |
+| `timeboost` | `run-full-demo` | chain | not yet profiled | not yet profiled |
 
-**Both spend real Arbitrum Sepolia ETH.** Confirm with the user before kicking off a run unless they explicitly asked.
+The command list above mirrors `listHeadlessCommands()` in each playbook — see also the table in README.md. Example scripts for every command live in `examples/`.
+
+**All three spend real Arbitrum Sepolia ETH.** Confirm with the user before kicking off a run unless they explicitly asked.
 
 ---
 
@@ -51,8 +54,9 @@ If the user wants to **add a new playbook** or **understand the architecture**, 
 Run all five before starting. Each takes < 1 second except the image build (skip-if-cached).
 
 ```bash
-# 1. Node version (must be 23+)
-node --version | grep -E 'v(2[3-9]|[3-9][0-9])'
+# 1. Node version (Node 22+; engines pins ">=22". The repo runs on tsx, so
+#    Node 23/24 work too — CI pins 22 for reproducibility.)
+node --version
 
 # 2. Docker daemon up
 docker info > /dev/null 2>&1 && echo OK

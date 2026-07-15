@@ -3,25 +3,27 @@
  *
  * This class is instantiated by ChainEnv and receives a reference to it.
  * All chain-related information is obtained through ChainEnv.
+ *
+ * Responsibilities are split across three modules:
+ * - portAllocation.ts     — choosing free host ports
+ * - containerDiscovery.ts — finding already-running nitro containers
+ * - this file             — node lifecycle (start/stop) + health monitoring
  */
 
 import { dockerCommand } from 'docker-cli-js';
 import { extractHttpPortFromConfigPath, extractWsPortFromConfigPath } from './nodeConfigExtractors.js';
 import fs from 'fs';
 import path from 'path';
-import net from 'net';
 import { createPublicClient, defineChain, http } from 'viem';
 import { NodeType, NodeInstance, NodeStatus, SingleNodeConfig } from '../../types/index.js';
 import {
   DOCKER_IMAGE,
   DOCKER_IMAGE_MALICIOUS,
   DOCKER_IMAGE_HONEST,
-  CONTAINER_NAME_PREFIX,
   DOCKER_DATA_DIR,
   DOCKER_USER,
   DOCKER_NODE_CONFIG_PATH,
   LOCAL_DATA_DIR,
-  DEFAULT_MAIN_NODE_HTTP_PORT,
   HEADLESS_DOCKER_MODE_LABEL,
   HEADLESS_DOCKER_SESSION_LABEL,
   HEADLESS_SESSION_ENV,
@@ -30,18 +32,12 @@ import logger from '../../utils/logger.js';
 import { renderNodeTable, buildNodeRow } from '../../utils/statusDisplay.js';
 import { getNodeConfigPathForType } from '../../utils/nodeConfigUtils.js';
 import ProcessMonitor, { ContainerExitEvent } from '../monitoring/processMonitor.js';
+import { quietDockerCommand } from './dockerCli.js';
+import { findAvailablePorts } from './portAllocation.js';
+import { getContainerName, discoverRunningNitroContainers } from './containerDiscovery.js';
 
 // Import ChainEnv type (avoid circular dependency by using type import)
 import type { ChainEnv } from '../../state/chainEnv/index.js';
-
-/**
- * Quiet docker command that suppresses all console output
- * Uses docker-cli-js's echo: false option for safe output suppression
- */
-const quietDockerCommand = async (command: string): Promise<{ raw?: string }> => {
-  const result = await dockerCommand(command, { echo: false });
-  return result;
-};
 
 /**
  * Generate a container ID
@@ -50,30 +46,10 @@ const generateContainerId = (): string => {
   return Math.random().toString(36).substring(2, 14);
 };
 
-const formatChainId = (chainId: number | bigint | null | undefined): string =>
-  chainId === null || chainId === undefined ? 'unknown' : chainId.toString();
-
-const getContainerName = (chainId: number | bigint | null | undefined, id: string): string =>
-  `${CONTAINER_NAME_PREFIX}-${formatChainId(chainId)}-${id}-${process.pid}`;
-
 const getHeadlessDockerLabelArgs = (): string[] => {
   const sessionId = process.env[HEADLESS_SESSION_ENV];
   if (!sessionId) return [];
   return [`--label ${HEADLESS_DOCKER_MODE_LABEL}=headless`, `--label ${HEADLESS_DOCKER_SESSION_LABEL}=${sessionId}`];
-};
-
-const parseContainerName = (containerName: string): { chainId?: string; nodeId?: string } | null => {
-  const parts = containerName.split('-');
-  if (parts.length < 3 || parts[0] !== CONTAINER_NAME_PREFIX) {
-    return null;
-  }
-
-  const maybeChainId = parts.length >= 4 && /^\d+$/.test(parts[1]) ? parts[1] : undefined;
-  const nodeIdStartIndex = maybeChainId ? 2 : 1;
-  const nodeId = parts.slice(nodeIdStartIndex, -1).join('-');
-  if (!nodeId) return null;
-
-  return { chainId: maybeChainId, nodeId };
 };
 
 const ensureDataDir = (baseDir: string): void => {
@@ -104,38 +80,6 @@ const createOrbitPublicClient = (chainId: number | bigint, httpPort: number) => 
   return createPublicClient({
     chain,
     transport: http(rpcUrl),
-  });
-};
-
-const parseDockerPsPorts = (raw: string): Set<number> => {
-  const used = new Set<number>();
-  const lines = raw
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean);
-  for (const line of lines) {
-    const portsPart = line;
-    const regex = /:(\d+)->/g;
-    let m: RegExpExecArray | null;
-    while ((m = regex.exec(portsPart)) !== null) {
-      used.add(Number(m[1]));
-    }
-  }
-  return used;
-};
-
-/**
- * Check if a host port is available.
- */
-const isPortAvailable = async (port: number): Promise<boolean> => {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.once('error', () => resolve(false));
-    server.once('listening', () => {
-      server.close();
-      resolve(true);
-    });
-    server.listen(port, '0.0.0.0');
   });
 };
 
@@ -194,6 +138,16 @@ export class NodeManager {
     return Array.from(this.nodes.values()).filter((n) => n.status === NodeStatus.RUNNING);
   }
 
+  /** Host ports already claimed by tracked nodes. */
+  private trackedPorts(): number[] {
+    const ports: number[] = [];
+    for (const node of this.nodes.values()) {
+      ports.push(node.config.httpPort);
+      if (node.config.wsPort > 0) ports.push(node.config.wsPort);
+    }
+    return ports;
+  }
+
   /**
    * Create node configuration for a specific type
    */
@@ -215,9 +169,7 @@ export class NodeManager {
     }
 
     // Find available ports by checking existing containers and host ports
-    const availablePorts = await this.findAvailablePorts(configPath);
-    const httpPort = availablePorts.httpPort;
-    const wsPort = availablePorts.wsPort;
+    const { httpPort, wsPort } = await findAvailablePorts(configPath, this.trackedPorts());
 
     // Generate unique ID for multiple instances
     let id: string;
@@ -255,59 +207,6 @@ export class NodeManager {
     }
 
     return { id, nodeType: type, httpPort, wsPort, forwardingTargetPort };
-  }
-
-  /**
-   * Find available ports for a new node
-   */
-  private async findAvailablePorts(configPath: string): Promise<{ httpPort: number; wsPort: number }> {
-    let usedPorts = new Set<number>();
-    try {
-      const ps = await dockerCommand('ps --format "{{.Ports}}"');
-      usedPorts = parseDockerPsPorts((ps as any)?.raw ?? '');
-    } catch (error) {
-      usedPorts = new Set<number>();
-    }
-
-    // Add ports from our tracked nodes
-    for (const node of this.nodes.values()) {
-      usedPorts.add(node.config.httpPort);
-      if (node.config.wsPort > 0) {
-        usedPorts.add(node.config.wsPort);
-      }
-    }
-
-    // Read ports from config file (http required, ws optional)
-    const configHttpPort = extractHttpPortFromConfigPath(configPath);
-    const configWsPort = extractWsPortFromConfigPath(configPath);
-
-    const isPortUsable = async (port: number): Promise<boolean> => {
-      if (port <= 0) return false;
-      if (usedPorts.has(port)) return false;
-      return isPortAvailable(port);
-    };
-
-    const httpAvailable = await isPortUsable(configHttpPort);
-    const wsAvailable = configWsPort === 0 || (await isPortUsable(configWsPort));
-
-    if (httpAvailable && wsAvailable) {
-      return { httpPort: configHttpPort, wsPort: configWsPort };
-    }
-
-    let httpPort = configHttpPort;
-    while (!(await isPortUsable(httpPort))) {
-      httpPort += 10;
-    }
-
-    let wsPort = 0;
-    if (configWsPort !== 0) {
-      wsPort = httpPort + 1;
-      while (!(await isPortUsable(wsPort))) {
-        wsPort += 1;
-      }
-    }
-
-    return { httpPort, wsPort };
   }
 
   /**
@@ -553,148 +452,39 @@ export class NodeManager {
   }
 
   /**
-   * Public method to discover existing containers
+   * Discover running nitro containers for this chain and register them.
    */
   async discoverExistingContainers(): Promise<void> {
     try {
-      const psResult = await quietDockerCommand(
-        'ps --filter "status=running" --format "{{.Names}} {{.ID}} {{.Ports}}" | grep nitro-',
-      );
-      const rawOutput = (psResult as any)?.raw || '';
+      const chainId = this.chainEnv.chainConfig.getChainId();
+      const discovered = await discoverRunningNitroContainers(chainId);
 
-      // Clean up any stray output that might leak through
-      const containerLines = rawOutput
-        .split('\n')
-        .filter((line: string) => line.trim())
-        .filter((line: string) => line.includes('nitro-')); // Only lines with nitro containers
-
-      for (const line of containerLines) {
-        if (!line.trim()) continue;
-
-        const parts = line.trim().split(' ');
-        if (parts.length < 2) continue;
-
-        const containerName = parts[0];
-        const containerId = parts[1];
-        const ports = parts.slice(2).join(' ');
-
-        // Verify container is actually running by doing a quick health check
-        try {
-          const healthResult = await quietDockerCommand(`inspect ${containerId} --format '{{.State.Running}}'`);
-          const isRunning = (healthResult as any)?.raw?.trim() === 'true';
-          if (!isRunning) {
-            continue; // Skip non-running containers
-          }
-        } catch {
-          continue; // Skip containers we can't inspect
+      for (const found of discovered) {
+        // Only add if we don't already track this container
+        if (this.nodes.has(found.nodeId) && this.nodes.get(found.nodeId)?.containerId === found.containerId) {
+          continue;
         }
 
-        // Extract node info from container name (e.g., nitro-<chainId>-main-12345)
-        const parsedName = parseContainerName(containerName);
-        if (parsedName?.nodeId) {
-          const chainId = this.chainEnv.chainConfig.getChainId();
-          if (chainId !== null && chainId !== undefined) {
-            if (parsedName.chainId && parsedName.chainId !== chainId.toString()) {
-              continue;
-            }
-            if (!parsedName.chainId) {
-              continue;
-            }
-          }
+        const nodeConfig: SingleNodeConfig = {
+          id: found.nodeId,
+          nodeType: found.nodeType,
+          httpPort: found.httpPort,
+          wsPort: found.wsPort,
+        };
 
-          const nodeId = parsedName.nodeId; // 'main' or generated ID
-          const nodeType = nodeId === 'main' ? NodeType.MAIN : NodeType.MALICIOUS;
+        // Create PublicClient with chain definition for Orbit chain
+        const publicClient = chainId ? createOrbitPublicClient(chainId, found.httpPort) : undefined;
 
-          // Extract port mappings from Docker port string
-          // Format: 0.0.0.0:8459->8449/tcp, [::]:8459->8449/tcp, 0.0.0.0:9642->9642/tcp
-          // We need to identify which host port maps to which container port:
-          // - Container port 8449 (or similar) = HTTP
-          // - Container port 8450 (or HTTP+1) = WS
-          // - Container port 9642 = Feed output (should be ignored for HTTP/WS detection)
-          // Docker outputs both IPv4 and IPv6 mappings, so we deduplicate by container port.
-          const FEED_CONTAINER_PORT = 9642;
-
-          const extractPortMappings = (portsStr: string): { httpPort: number; wsPort: number } => {
-            // Map: containerPort -> hostPort (deduplicated)
-            const portMap = new Map<number, number>();
-            const re = /:(\d+)->(\d+)\/tcp/g;
-            let m: RegExpExecArray | null;
-            while ((m = re.exec(portsStr)) !== null) {
-              const hostPort = Number(m[1]);
-              const containerPort = Number(m[2]);
-              if (Number.isFinite(hostPort) && Number.isFinite(containerPort)) {
-                // Skip feed port - it's not HTTP or WS
-                if (containerPort === FEED_CONTAINER_PORT) continue;
-                // Only store first occurrence (IPv4/IPv6 both map to same host port)
-                if (!portMap.has(containerPort)) {
-                  portMap.set(containerPort, hostPort);
-                }
-              }
-            }
-
-            // Sort container ports to find HTTP (lowest) and WS (second lowest)
-            const sortedContainerPorts = Array.from(portMap.keys()).sort((a, b) => a - b);
-
-            let httpPort = DEFAULT_MAIN_NODE_HTTP_PORT;
-            let wsPort = 0; // 0 means WS not configured
-
-            if (sortedContainerPorts.length >= 1) {
-              // First (lowest) container port is HTTP
-              httpPort = portMap.get(sortedContainerPorts[0]) ?? DEFAULT_MAIN_NODE_HTTP_PORT;
-            }
-            if (sortedContainerPorts.length >= 2) {
-              // Second container port is WS
-              wsPort = portMap.get(sortedContainerPorts[1]) ?? 0;
-            }
-
-            return { httpPort, wsPort };
-          };
-
-          const { httpPort, wsPort } = extractPortMappings(ports);
-
-          // Verify the actual chainId via RPC call to ensure the node is running the expected chain
-          const expectedChainId = this.chainEnv.chainConfig.getChainId();
-          if (expectedChainId !== null && expectedChainId !== undefined) {
-            try {
-              const tempClient = createPublicClient({ transport: http(`http://localhost:${httpPort}`) });
-              const actualChainId = await tempClient.getChainId();
-
-              if (actualChainId !== expectedChainId) {
-                // ChainId mismatch - the node is running a different chain, skip this container
-                continue;
-              }
-            } catch {
-              // RPC call failed - node may not be ready yet or not responding, skip this container
-              continue;
-            }
-          }
-
-          // Only add if we don't already track this container
-          if (!this.nodes.has(nodeId) || this.nodes.get(nodeId)?.containerId !== containerId) {
-            const nodeConfig: SingleNodeConfig = {
-              id: nodeId,
-              nodeType,
-              httpPort,
-              wsPort,
-            };
-
-            // Create PublicClient with chain definition for Orbit chain
-            const publicClient = chainId ? createOrbitPublicClient(chainId, httpPort) : undefined;
-
-            const nodeInstance: NodeInstance = {
-              config: nodeConfig,
-              containerId,
-              containerName, // Store the discovered container name
-              status: NodeStatus.RUNNING,
-              publicClient,
-            };
-
-            this.nodes.set(nodeId, nodeInstance);
-            logger.info(
-              `Discovered running node: ${nodeId} (Container: ${containerId.substring(0, 12)}, HTTP:${httpPort}, WS:${wsPort})`,
-            );
-          }
-        }
+        this.nodes.set(found.nodeId, {
+          config: nodeConfig,
+          containerId: found.containerId,
+          containerName: found.containerName,
+          status: NodeStatus.RUNNING,
+          publicClient,
+        });
+        logger.info(
+          `Discovered running node: ${found.nodeId} (Container: ${found.containerId.substring(0, 12)}, HTTP:${found.httpPort}, WS:${found.wsPort})`,
+        );
       }
 
       if (this.nodes.size > 0) {

@@ -28,17 +28,8 @@ import {
   toBytes,
 } from 'viem';
 
-const TIMEBOOST_DOMAIN_LABEL = 'TIMEBOOST_BID';
-
-/** Cached keccak256("TIMEBOOST_BID"). */
-let cachedDomainValue: Hex | null = null;
-
-export function timeboostDomainValue(): Hex {
-  if (cachedDomainValue === null) {
-    cachedDomainValue = keccak256(toBytes(TIMEBOOST_DOMAIN_LABEL));
-  }
-  return cachedDomainValue;
-}
+/** keccak256("TIMEBOOST_BID") — the domain tag Nitro prepends to the signed payload. */
+const TIMEBOOST_DOMAIN_VALUE: Hex = keccak256(toBytes('TIMEBOOST_BID'));
 
 export interface BuildSubmissionMessageInput {
   chainId: bigint;
@@ -61,7 +52,7 @@ export function buildSubmissionMessageBytes(input: BuildSubmissionMessageInput):
 
   return bytesToHex(
     concat([
-      toBytes(timeboostDomainValue()),
+      toBytes(TIMEBOOST_DOMAIN_VALUE),
       chainIdPadded,
       toBytes(input.auctionContractAddress),
       roundBuf,

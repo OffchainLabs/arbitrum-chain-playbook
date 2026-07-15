@@ -8,7 +8,6 @@ import type { PublicClient, Address } from 'viem';
 import type { CoreContracts } from '@arbitrum/chain-sdk';
 import { utils } from 'ethers';
 import logger from '../../utils/logger.js';
-import { cancellableSleep } from '../../utils/cancellation.js';
 import { normalizeBytes32Like } from '../../utils/bytes32.js';
 import { sequencerInboxAbi, rollupCoreAbi, boldRollupEventsAbi } from './abis.js';
 import type { MonitorState, RollupStatus } from './types.js';
@@ -323,63 +322,6 @@ export async function startRollupMonitor(
 export function stopRollupMonitor(): void {
   monitorState.running = false;
   logger.info('[Monitor] Stopping background monitoring...');
-}
-
-/**
- * Get current monitor state
- */
-export function getMonitorState(): MonitorState {
-  return { ...monitorState };
-}
-
-/**
- * Wait for a new assertion to be confirmed
- *
- * @param parentClient - The parent chain public client
- * @param rollupAddress - The rollup contract address
- * @param currentConfirmed - The current latestConfirmed assertion hash
- * @param maxWaitSeconds - Maximum time to wait in seconds
- * @returns The new confirmed assertion hash, or null if timeout
- */
-export async function waitForAssertionConfirmation(
-  parentClient: PublicClient,
-  rollupAddress: Address,
-  currentConfirmed: string,
-  maxWaitSeconds: number = 600,
-  signal?: AbortSignal,
-): Promise<string | null> {
-  const intervalMs = 5000;
-  const maxAttempts = Math.ceil((maxWaitSeconds * 1000) / intervalMs);
-  let attempts = 0;
-
-  logger.info(`Waiting for new assertion confirmation (max ${maxWaitSeconds}s)...`);
-
-  while (attempts < maxAttempts) {
-    await cancellableSleep(intervalMs, signal);
-    attempts++;
-
-    const newConfirmedRaw = await parentClient.readContract({
-      address: rollupAddress,
-      abi: rollupCoreAbi,
-      functionName: 'latestConfirmed',
-    });
-
-    const currentConfirmedNorm = normalizeBytes32Like(currentConfirmed);
-    const newConfirmedNorm = normalizeBytes32Like(newConfirmedRaw);
-
-    if (newConfirmedNorm !== currentConfirmedNorm) {
-      logger.success(`New assertion confirmed: ${newConfirmedNorm}`);
-      return newConfirmedNorm;
-    }
-
-    if (attempts % 12 === 0) {
-      // Log every 60 seconds
-      logger.info(`Still waiting... (${(attempts * intervalMs) / 1000}s elapsed)`);
-    }
-  }
-
-  logger.warn(`Timeout waiting for assertion confirmation after ${maxWaitSeconds}s`);
-  return null;
 }
 
 /**

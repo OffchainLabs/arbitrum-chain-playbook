@@ -11,21 +11,9 @@
  */
 
 import { type Address, type Hash, type Hex, type LocalAccount, type PublicClient, parseEther } from 'viem';
-import { submitExpressLaneTransaction, type ExpressLaneSubmitInput, type RunnerLogger } from './expressLaneRunner.js';
+import { submitExpressLaneTransaction, type ExpressLaneSubmitInput } from './expressLaneRunner.js';
 import type { ExperimentRecord, TxObservation } from './types.js';
-
-const recorderLogger: RunnerLogger & {
-  section: (m: string) => void;
-  raw: (m: string) => void;
-  success: (m: string) => void;
-} = {
-  event: (m) => console.log('•', m),
-  info: (m) => console.log('ℹ', m),
-  warn: (m) => console.log('⚠', m),
-  section: (m) => console.log('\n▸', m, '\n'),
-  raw: (m) => console.log(m),
-  success: (m) => console.log('✔', m),
-};
+import { log, signRawTx } from './util.js';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -75,7 +63,7 @@ export interface NormalTxInput {
 export async function runExperimentPair(input: RunExperimentInput): Promise<ExperimentRecord> {
   const { index, round, controller, expressLaneSubmit, normalTx, childClient, receiptTimeoutMs = 30_000 } = input;
 
-  recorderLogger.section(`Experiment #${index + 1}: round ${round}`);
+  log.section(`Experiment #${index + 1}: round ${round}`);
 
   const elTask = (async () => {
     const sub = await submitExpressLaneTransaction({
@@ -130,28 +118,12 @@ export interface SubmitNormalTxResult {
 export async function submitNormalTx(input: SubmitNormalTxInput): Promise<SubmitNormalTxResult> {
   const { senderAccount, childClient, chainId, to, valueEth = '0', label } = input;
 
-  const nonce = await childClient.getTransactionCount({
-    address: senderAccount.address,
-    blockTag: 'pending',
-  });
-  const gasPrice = await childClient.getGasPrice();
-
-  const rlpTx = (await senderAccount.signTransaction({
-    chainId,
-    type: 'eip1559',
-    to,
-    value: parseEther(valueEth),
-    gas: 100_000n,
-    maxFeePerGas: gasPrice * 2n,
-    maxPriorityFeePerGas: gasPrice,
-    nonce,
-    data: '0x',
-  })) as Hex;
+  const rlpTx = await signRawTx(childClient, senderAccount, { to, value: parseEther(valueEth), chainId });
 
   const sentAtMs = Date.now();
   const txHash = await childClient.sendRawTransaction({ serializedTransaction: rlpTx });
 
-  recorderLogger.event(`[${label}] normal tx submitted: ${txHash}`);
+  log.event(`[${label}] normal tx submitted: ${txHash}`);
 
   return { txHash, sentAtMs };
 }
@@ -214,7 +186,7 @@ export async function completeObservation(input: CompleteObservationInput): Prom
  * Returns `null` when the field is absent — typically because the sequencer
  * does not have `node.transaction-streamer.track-block-metadata-from` set.
  */
-export function readTimeboostedField(rawReceipt: Record<string, unknown> | null): boolean | null {
+function readTimeboostedField(rawReceipt: Record<string, unknown> | null): boolean | null {
   if (!rawReceipt || typeof rawReceipt !== 'object') return null;
   const v = rawReceipt['timeboosted'];
   if (typeof v === 'boolean') return v;
@@ -232,25 +204,19 @@ function printPairSummary(el: TxObservation, normal: TxObservation): void {
     return `${blockMs - o.sentAtMs}ms`;
   };
 
-  recorderLogger.raw(
+  log.raw(
     `  express   block=${el.blockNumber} idx=${el.txIndex}     timeboosted=${fmt(el.timeboosted)}  delta=${lag(el)}`,
   );
-  recorderLogger.raw(
+  log.raw(
     `  normal    block=${normal.blockNumber} idx=${normal.txIndex}     timeboosted=${fmt(normal.timeboosted)}  delta=${lag(normal)}`,
   );
 
   if (el.blockNumber < normal.blockNumber) {
-    recorderLogger.success(
-      `  → normal tx landed ${normal.blockNumber - el.blockNumber} block(s) later than express tx`,
-    );
+    log.success(`  → normal tx landed ${normal.blockNumber - el.blockNumber} block(s) later than express tx`);
   } else if (el.blockNumber === normal.blockNumber && el.txIndex < normal.txIndex) {
-    recorderLogger.success(
-      `  → both in same block; express tx is ordered first (idx ${el.txIndex} vs ${normal.txIndex})`,
-    );
+    log.success(`  → both in same block; express tx is ordered first (idx ${el.txIndex} vs ${normal.txIndex})`);
   } else {
-    recorderLogger.warn(
-      `  → no visible ordering advantage this run (timing nondeterminism — repeat to see statistical pattern)`,
-    );
+    log.warn(`  → no visible ordering advantage this run (timing nondeterminism — repeat to see statistical pattern)`);
   }
 }
 

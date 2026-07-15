@@ -10,20 +10,10 @@
 
 import { ChainConfig, NodeConfig } from '@arbitrum/chain-sdk';
 import { PublicClient } from 'viem';
-import { NodeManagerLike, OperationMode } from '../../types/index.js';
+import { NodeManagerLike, NodeType, OperationMode } from '../../types/index.js';
 import { ChainStatus, CoreContracts, NodeConfigPaths } from './types.js';
-import { loadChainDataFromDisk, saveChainDataToDisk, nodeConfigFileExists } from './persistence.js';
+import { loadChainDataFromDisk, nodeConfigFileExists, saveCoreContracts } from './persistence.js';
 import logger from '../../utils/logger.js';
-import { StatusAccessor } from './accessors/statusAccessor.js';
-import { NodeConfigAccessor } from './accessors/nodeConfigAccessor.js';
-import { ChainConfigAccessor } from './accessors/chainConfigAccessor.js';
-
-// Forward declaration to avoid circular dependency
-let NodeManagerClass: (new (chainEnv: ChainEnv) => NodeManagerLike) | null = null;
-
-export function setNodeManagerClass(cls: new (chainEnv: ChainEnv) => NodeManagerLike): void {
-  NodeManagerClass = cls;
-}
 
 // =============================================================================
 // ChainEnv Singleton Class
@@ -51,27 +41,81 @@ export class ChainEnv {
   private _nodeConfig: NodeConfig | null = null;
   private _coreContracts: CoreContracts | null = null;
   private _nodeConfigPaths: NodeConfigPaths = new Map();
-  private _status: ChainStatus = ChainStatus.NOT_INITATED;
+  private _status: ChainStatus = ChainStatus.NOT_INITIATED;
   private _nodeManager: NodeManagerLike | null = null;
   private _parentChainPublicClient: PublicClient | null = null;
   private _operationMode: OperationMode = OperationMode.NONE;
-  private _chainModeAvailable: boolean = true;
-  private _remoteRpcModeAvailable: boolean = false;
   private _remoteRpcUrl: string | null = null;
 
-  // Accessors
-  public readonly status: StatusAccessor;
-  public readonly nodeConfig: NodeConfigAccessor;
-  public readonly chainConfig: ChainConfigAccessor;
+  // Grouped views over the private state. Plain object literals (arrow
+  // functions capture `this`), so no external accessor classes reaching into
+  // private fields — call-site API is unchanged (chainEnv.status.get() etc.).
+
+  /** Status operations. */
+  public readonly status = {
+    /** Check if chain environment is initiated. */
+    isInitiated: (): boolean => this._status !== ChainStatus.NOT_INITIATED && this._chainConfig !== null,
+
+    /** Get current chain status (refreshes RUNNING/DEPLOYED from the node manager). */
+    get: (): ChainStatus => {
+      if (this._operationMode === OperationMode.DEVNODE) {
+        const nodeManager = this.nodeManager;
+        if (nodeManager) {
+          const runningNodes = nodeManager.getRunningNodes();
+          this._status = runningNodes.length > 0 ? ChainStatus.DEVNODE_RUNNING : ChainStatus.DEPLOYED;
+        }
+        return this._status;
+      }
+
+      if (this._status === ChainStatus.DEPLOYED || this._status === ChainStatus.RUNNING) {
+        const nodeManager = this.nodeManager;
+        if (nodeManager) {
+          const runningNodes = nodeManager.getRunningNodes();
+          this._status = runningNodes.length > 0 ? ChainStatus.RUNNING : ChainStatus.DEPLOYED;
+        }
+      }
+      return this._status;
+    },
+
+    /** Set chain status. */
+    set: (status: ChainStatus): void => {
+      this._status = status;
+    },
+  };
+
+  /** Node configuration operations. */
+  public readonly nodeConfig = {
+    /** Get node configuration. */
+    get: (): NodeConfig | null => this._nodeConfig,
+
+    /** Get all node config paths. */
+    getPaths: (): NodeConfigPaths => this._nodeConfigPaths,
+
+    /** Get node config path for specific node type. */
+    getPath: (type: NodeType): string | undefined => this._nodeConfigPaths.get(type),
+
+    /** Set node config path for specific node type. */
+    setPath: (type: NodeType, path: string): void => {
+      this._nodeConfigPaths.set(type, path);
+    },
+  };
+
+  /** Chain configuration operations. */
+  public readonly chainConfig = {
+    /** Get chain configuration. */
+    get: (): ChainConfig | null => this._chainConfig,
+
+    /** Get chain ID. */
+    getChainId: (): number | null => this._chainConfig?.chainId ?? null,
+
+    /** Get core contracts. */
+    getCoreContracts: (): CoreContracts | null => this._coreContracts,
+  };
 
   /**
    * Private constructor for singleton pattern
    */
-  private constructor() {
-    this.status = new StatusAccessor(this);
-    this.nodeConfig = new NodeConfigAccessor(this);
-    this.chainConfig = new ChainConfigAccessor(this);
-  }
+  private constructor() {}
 
   /**
    * Get the singleton instance
@@ -123,22 +167,6 @@ export class ChainEnv {
   }
 
   /**
-   * Save current chain configuration to disk
-   */
-  save(): void {
-    if (!this._chainConfig || !this._nodeConfig) {
-      throw new Error('No chain data to save');
-    }
-
-    saveChainDataToDisk({
-      chainConfig: this._chainConfig,
-      nodeConfig: this._nodeConfig,
-      coreContracts: this._coreContracts || undefined,
-      nodeConfigPaths: this._nodeConfigPaths,
-    });
-  }
-
-  /**
    * Set chain data after deployment or reconstruction from tx hash
    */
   setDeploymentResult(
@@ -152,6 +180,10 @@ export class ChainEnv {
     this._coreContracts = coreContracts;
     this._nodeConfigPaths = nodeConfigPaths;
     this._status = ChainStatus.DEPLOYED;
+
+    // Persist the full contract set so a later load() can restore it without
+    // needing CHAIN_DEPLOYMENT_TRANSACTION_HASH (best-effort).
+    saveCoreContracts(chainConfig.chainId, coreContracts);
   }
 
   /**
@@ -162,7 +194,7 @@ export class ChainEnv {
     this._nodeConfig = null;
     this._coreContracts = null;
     this._nodeConfigPaths = new Map();
-    this._status = ChainStatus.NOT_INITATED;
+    this._status = ChainStatus.NOT_INITIATED;
     this._operationMode = OperationMode.NONE;
     this._remoteRpcUrl = null;
 
@@ -223,17 +255,21 @@ export class ChainEnv {
   // ===========================================================================
 
   /**
-   * Get NodeManager instance (lazy initialization)
+   * Get the current node manager (set explicitly by each enterXxxMode).
    * Use this to access all node operations:
    *   chainEnv.nodeManager.startNode(type)
    *   chainEnv.nodeManager.stopNode(id)
-   *   chainEnv.nodeManager.manageNodes()
    */
   get nodeManager(): NodeManagerLike | null {
-    if (!this._nodeManager && NodeManagerClass) {
-      this._nodeManager = new NodeManagerClass(this);
-    }
     return this._nodeManager;
+  }
+
+  /**
+   * Install the node manager for the current operation mode.
+   * Called by mode-entry code right after setOperationMode().
+   */
+  setNodeManager(nodeManager: NodeManagerLike | null): void {
+    this._nodeManager = nodeManager;
   }
 
   get operationMode(): OperationMode {
@@ -244,25 +280,6 @@ export class ChainEnv {
     this._operationMode = mode;
     this._nodeManager = null;
   }
-
-  setChainModeAvailable(available: boolean): void {
-    this._chainModeAvailable = available;
-  }
-
-  isChainModeAvailable(): boolean {
-    return this._chainModeAvailable;
-  }
-
-  setRemoteRpcModeAvailable(available: boolean): void {
-    this._remoteRpcModeAvailable = available;
-  }
-
-  isRemoteRpcModeAvailable(): boolean {
-    return this._remoteRpcModeAvailable;
-  }
 }
-
-// Export singleton getter for convenience
-export const getChainEnv = (): ChainEnv => ChainEnv.getInstance();
 
 export default ChainEnv;

@@ -19,6 +19,24 @@ inquirer.prompt = (async (questions: any, answers?: any) => {
   return _originalPrompt(questions, answers);
 }) as typeof inquirer.prompt;
 
+// inquirer v8's Ctrl+C handler closes its readline — the process's last live
+// handle — and then re-raises SIGINT against itself. The signal callback needs
+// an event-loop turn to run, but the loop is already empty, so the process
+// exits 0 before any SIGINT listener fires. The only reliable place to say
+// goodbye for that path is the synchronous 'exit' hook.
+let farewellShown = false;
+function farewell(message: string): void {
+  if (!farewellShown) {
+    farewellShown = true;
+    console.log(`\n${message}`);
+  }
+}
+process.on('exit', (code) => {
+  if (code === 0) {
+    farewell('Interrupted. Goodbye!');
+  }
+});
+
 async function main(): Promise<void> {
   try {
     console.clear();
@@ -32,11 +50,13 @@ async function main(): Promise<void> {
       logger.info(`Session log: ${logFile}`);
     }
     await mainMenu.show();
+    farewellShown = true; // mainMenu prints its own farewell on normal exit
     process.exit(0);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ERR_USE_AFTER_CLOSE') {
       logger.newline();
       logger.info('Goodbye!');
+      farewellShown = true;
       process.exit(0);
     }
 
@@ -51,8 +71,7 @@ async function main(): Promise<void> {
 process.on('SIGINT', () => {
   const handled = cancellationManager.handleSigint();
   if (!handled) {
-    logger.newline();
-    logger.info('Interrupted. Goodbye!');
+    farewell('Interrupted. Goodbye!');
     process.exit(0);
   }
 });

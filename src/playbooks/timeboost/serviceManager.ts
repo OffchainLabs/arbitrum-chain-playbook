@@ -18,8 +18,9 @@
  * `--auctioneer-server.sequencer-endpoint`.
  */
 
-import { dockerCommand } from 'docker-cli-js';
+import { quietDockerCommand } from '../../core/docker/dockerCli.js';
 import type { Address } from 'viem';
+import { log, sleep } from './util.js';
 
 const REDIS_CONTAINER = 'timeboost-redis';
 const BID_VALIDATOR_CONTAINER = 'timeboost-bid-validator';
@@ -28,12 +29,6 @@ const AUCTIONEER_CONTAINER = 'timeboost-auctioneer';
 const REDIS_HOST_PORT = 6379;
 export const BID_VALIDATOR_HOST_PORT = 9372;
 const AUCTIONEER_HTTP_HOST_PORT = 9373; // not strictly required; helpful for poking
-
-const log = {
-  info: (m: string) => console.log('ℹ', m),
-  warn: (m: string) => console.log('⚠', m),
-  success: (m: string) => console.log('✔', m),
-};
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -166,20 +161,11 @@ export async function startTimeboostServices(cfg: ServiceManagerConfig): Promise
 export async function stopTimeboostServices(): Promise<void> {
   for (const name of [AUCTIONEER_CONTAINER, BID_VALIDATOR_CONTAINER, REDIS_CONTAINER]) {
     try {
-      await dockerCommand(`rm -f ${name}`, { echo: false });
+      await quietDockerCommand(`rm -f ${name}`);
     } catch {
       // container probably wasn't running — ignore
     }
   }
-}
-
-export async function timeboostServicesRunning(): Promise<boolean> {
-  const names = [REDIS_CONTAINER, BID_VALIDATOR_CONTAINER, AUCTIONEER_CONTAINER];
-  for (const n of names) {
-    const r = (await dockerCommand(`inspect -f '{{.State.Running}}' ${n}`, { echo: false })) as { raw?: string };
-    if (!r?.raw?.includes('true')) return false;
-  }
-  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -187,43 +173,42 @@ export async function timeboostServicesRunning(): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 async function runDocker(args: string[]): Promise<string> {
-  const r = (await dockerCommand(args.join(' '), { echo: false })) as { raw?: string };
+  const r = (await quietDockerCommand(args.join(' '))) as { raw?: string };
   return (r?.raw ?? '').trim();
 }
 
-async function waitForRedis(timeoutMs = 15_000): Promise<void> {
+/** Poll `probe` every 500ms until it returns true or `timeoutMs` elapses. */
+async function pollUntil(probe: () => Promise<boolean>, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const r = (await dockerCommand(`exec ${REDIS_CONTAINER} redis-cli PING`, { echo: false })) as { raw?: string };
-      if (r?.raw?.includes('PONG')) return;
+      if (await probe()) return true;
     } catch {
-      // not yet up
+      // not ready yet
     }
     await sleep(500);
   }
-  throw new Error(`Redis did not become ready within ${timeoutMs}ms`);
+  return false;
+}
+
+async function waitForRedis(timeoutMs = 15_000): Promise<void> {
+  const ready = await pollUntil(async () => {
+    const r = (await quietDockerCommand(`exec ${REDIS_CONTAINER} redis-cli PING`)) as { raw?: string };
+    return !!r?.raw?.includes('PONG');
+  }, timeoutMs);
+  if (!ready) throw new Error(`Redis did not become ready within ${timeoutMs}ms`);
 }
 
 /**
- * Tail container logs and resolve when a matching line appears, or reject on timeout.
- * Used as a soft readiness gate; we don't fail the demo if the regex doesn't match —
- * the caller may proceed and let the next operation surface real failures.
+ * Soft readiness gate on container logs: we don't fail the demo if the regex
+ * never matches — the caller proceeds and lets the next operation surface
+ * real failures.
  */
 async function waitForLogLine(container: string, pattern: RegExp, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const r = (await dockerCommand(`logs --tail 200 ${container}`, { echo: false })) as { raw?: string };
-      if (r?.raw && pattern.test(r.raw)) return;
-    } catch {
-      // container may not be ready yet
-    }
-    await sleep(500);
-  }
-  log.warn(`Container ${container} did not log a line matching ${pattern} within ${timeoutMs}ms — continuing anyway`);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+  const ready = await pollUntil(async () => {
+    const r = (await quietDockerCommand(`logs --tail 200 ${container}`)) as { raw?: string };
+    return !!r?.raw && pattern.test(r.raw);
+  }, timeoutMs);
+  if (!ready)
+    log.warn(`Container ${container} did not log a line matching ${pattern} within ${timeoutMs}ms — continuing anyway`);
 }

@@ -12,7 +12,7 @@ import type { CoreContracts } from '@arbitrum/chain-sdk';
 /**
  * Check if a network with the given chainId is already registered in the SDK.
  */
-export function isNetworkRegistered(chainId: number): boolean {
+function isNetworkRegistered(chainId: number): boolean {
   const networks = getArbitrumNetworks();
   return networks.some((network) => network.chainId === chainId);
 }

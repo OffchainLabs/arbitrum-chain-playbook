@@ -63,18 +63,12 @@ export class InteractChainOperations {
    * Get menu choices based on current operation mode
    */
   private getMenuChoices() {
-    const chainEnv = ChainEnv.getInstance();
-    const mode = chainEnv.operationMode;
-
     // Both Chain Mode and Remote RPC Mode support deposit
-    const choices = [{ name: 'Deposit Native Token to L2', value: 'deposit-to-l2' }];
-
-    // Add mode-specific options here if needed in the future
-
-    choices.push(new inquirer.Separator() as never);
-    choices.push({ name: '← Back to Main Menu', value: 'back' } as never);
-
-    return choices;
+    return [
+      { name: 'Deposit Native Token to L2', value: 'deposit-to-l2' },
+      new inquirer.Separator(),
+      { name: '← Back to Main Menu', value: 'back' },
+    ];
   }
 
   /**

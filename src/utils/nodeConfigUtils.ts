@@ -1,16 +1,9 @@
 import { Chain, PublicClient } from 'viem';
-import {
-  ChainConfig,
-  NodeConfig,
-  PrepareNodeConfigParams,
-  createRollupPrepareTransaction,
-  createRollupPrepareTransactionReceipt,
-  prepareNodeConfig,
-} from '@arbitrum/chain-sdk';
+import { NodeConfig, PrepareNodeConfigParams, prepareNodeConfig } from '@arbitrum/chain-sdk';
 import { config } from 'dotenv';
 import path from 'path';
 import fs from 'fs';
-import { ChainEnvData, NodeType } from '../types/index.js';
+import { ChainData, NodeType } from '../types/index.js';
 import {
   NODE_CONFIG_FILENAME,
   NODE_CONFIG_MALICIOUS_FILENAME,
@@ -18,10 +11,11 @@ import {
   DEFAULT_CHAIN_NAME,
 } from '../types/constants.js';
 import { SenderAccount, SenderRole } from '../state/sendersEnv/index.js';
+import { parseDeploymentTx } from './deploymentTx.js';
 config();
 
 // Get base config file path (MAIN type)
-export const getNodeConfigPath = () => path.join(process.cwd(), NODE_CONFIG_FILENAME);
+export const getNodeConfigPath = (): string => path.join(process.cwd(), NODE_CONFIG_FILENAME);
 
 // Get config file path for specific NodeType
 export const getNodeConfigPathForType = (type: NodeType): string => {
@@ -46,8 +40,15 @@ export const createNodeConfigPaths = (): Map<NodeType, string> => {
 };
 
 // Get config file patterns for discovery
-export const getConfigFilePattern = (): string[] => {
+const getConfigFilePattern = (): string[] => {
   return ['node-config.json', 'node-config-*.json', 'configs/node-*.json'];
+};
+
+// Convert a simple filename glob (only `*` supported) to an anchored RegExp.
+// Escape regex metacharacters first so the `.*` we substitute for `*` survives.
+export const filenameGlobToRegExp = (pattern: string): RegExp => {
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escaped.replace(/\*/g, '.*')}$`);
 };
 
 // Discover node configurations
@@ -60,39 +61,26 @@ export const discoverNodeConfigs = (): Map<string, string> => {
       // Use fs.readdirSync with pattern matching instead of glob
       const cwd = process.cwd();
 
-      if (pattern === 'node-config.json') {
+      if (!pattern.includes('*')) {
+        // Exact filename, e.g. node-config.json
         const filePath = path.join(cwd, pattern);
         if (fs.existsSync(filePath)) {
-          configs.set('node-config', path.resolve(filePath));
+          configs.set(path.basename(pattern, '.json'), path.resolve(filePath));
         }
-      } else if (pattern.includes('*')) {
-        // Simple pattern matching for node-config-*.json
-        const files = fs.readdirSync(cwd);
-        const regex = new RegExp(pattern.replace(/\*/g, '.*').replace(/\./g, '\\.'));
-
-        files.forEach((file) => {
-          if (regex.test(file) && fs.existsSync(path.join(cwd, file))) {
-            const configName = path.basename(file, '.json');
-            configs.set(configName, path.resolve(path.join(cwd, file)));
-          }
-        });
       } else {
-        // For configs/node-*.json pattern
+        // Glob pattern; may carry a directory component, e.g. configs/node-*.json
         const dirPath = path.dirname(pattern);
         const fileName = path.basename(pattern);
-        const fullDirPath = path.join(cwd, dirPath);
+        const fullDirPath = dirPath === '.' ? cwd : path.join(cwd, dirPath);
 
         if (fs.existsSync(fullDirPath)) {
           const files = fs.readdirSync(fullDirPath);
-          const regex = new RegExp(fileName.replace(/\*/g, '.*').replace(/\./g, '\\.'));
+          const regex = filenameGlobToRegExp(fileName);
 
           files.forEach((file) => {
             if (regex.test(file)) {
               const fullPath = path.join(fullDirPath, file);
-              if (fs.existsSync(fullPath)) {
-                const configName = path.basename(file, '.json');
-                configs.set(configName, path.resolve(fullPath));
-              }
+              configs.set(path.basename(file, '.json'), path.resolve(fullPath));
             }
           });
         }
@@ -142,7 +130,7 @@ export async function generateNodeConfiguration(
   parentChainPublicClient: PublicClient,
   nodeAccounts: SenderAccount[],
   parentChainRpcUrl?: string,
-): Promise<ChainEnvData> {
+): Promise<ChainData> {
   // get the validator private keys from the node accounts
   const validatorPrivateKeys = nodeAccounts
     .filter((account) => account.role === SenderRole.Validator)
@@ -152,19 +140,8 @@ export async function generateNodeConfiguration(
     .filter((account) => account.role === SenderRole.BatchPoster)
     .map((account) => account.privateKey);
 
-  // get the transaction
-  const tx = createRollupPrepareTransaction(await parentChainPublicClient.getTransaction({ hash: txHash }));
-
-  // get the transaction receipt
-  const txReceipt = createRollupPrepareTransactionReceipt(
-    await parentChainPublicClient.getTransactionReceipt({ hash: txHash }),
-  );
-
-  const txConfig = tx.getInputs()[0].config;
-  // get the chain config from the transaction inputs
-  const chainConfig: ChainConfig = JSON.parse(txConfig.chainConfig);
-  // get the core contracts from the transaction receipt
-  const coreContracts = txReceipt.getCoreContracts();
+  // Decode the deployment transaction (chainConfig, coreContracts, stakeToken)
+  const { chainConfig, coreContracts, rollupConfig } = await parseDeploymentTx(parentChainPublicClient, txHash);
 
   // prepare the node config
   // Use provided parentChainRpcUrl, or fallback to chain's default RPC
@@ -174,7 +151,7 @@ export async function generateNodeConfiguration(
     coreContracts,
     batchPosterPrivateKey: batchPosterPrivateKeys[0],
     validatorPrivateKey: validatorPrivateKeys[0],
-    stakeToken: txConfig.stakeToken,
+    stakeToken: rollupConfig.stakeToken,
     parentChainId: parentChain.id as 1 | 1337 | 412346 | 42161 | 42170 | 8453 | 11155111 | 421614 | 84532, // Chain-sdk only supports these parent chain ids
     parentChainRpcUrl: parentChainRpcUrl || getRpcUrl(parentChain),
   };
@@ -183,7 +160,7 @@ export async function generateNodeConfiguration(
 
   const nodeConfigPaths = createNodeConfigPaths();
 
-  return { nodeConfig, nodeConfigPaths, chainConfig };
+  return { nodeConfig, nodeConfigPaths, chainConfig, coreContracts };
 }
 
 // Configure main node with feed output enabled (for other nodes to subscribe)
@@ -385,32 +362,3 @@ export function overwriteToNodeConfigForDeletingBoldStrategy(nodeConfig: NodeCon
 
   return nodeConfig;
 }
-
-// Find the chain id from the node config file
-export const findChainIdFromConfigFile = (obj: any): number | null => {
-  if (!obj || typeof obj !== 'object') return null;
-  // direct keys: camelCase and dashed
-  const direct = parseChainIdNumber((obj as any).chainId) ?? parseChainIdNumber((obj as any)['chain-id']);
-  if (direct !== null) return direct;
-
-  // nested chain-config (dashed or camelCase)
-  const cfg = (obj as any)['chain-config'] ?? (obj as any).chainConfig;
-  const fromCfg = parseChainIdNumber(cfg?.chainId) ?? parseChainIdNumber(cfg?.['chain-id']);
-  if (fromCfg !== null) return fromCfg;
-
-  for (const v of Object.values(obj)) {
-    const r = findChainIdFromConfigFile(v);
-    if (r !== null) return r;
-  }
-  return null;
-};
-
-// Parse the chain id number from the value
-export const parseChainIdNumber = (val: unknown): number | null => {
-  if (typeof val === 'number') return val;
-  if (typeof val === 'string' && val.trim() !== '') {
-    const n = Number(val);
-    return Number.isNaN(n) ? null : n;
-  }
-  return null;
-};

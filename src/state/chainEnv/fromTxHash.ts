@@ -14,26 +14,22 @@ import {
   ChainConfig,
   CoreContracts,
   PrepareNodeConfigParams,
-  createRollupPrepareTransaction,
-  createRollupPrepareTransactionReceipt,
   prepareNodeConfig,
   NodeConfig,
 } from '@arbitrum/chain-sdk';
 import { getParentChainLayer } from '@arbitrum/chain-sdk/utils';
 import logger from '../../utils/logger.js';
-import { createDefaultNodeConfigPaths, getNodeConfigFilePath } from './persistence.js';
+import {
+  applyGeneratedNodeConfigDefaults,
+  createNodeConfigPaths,
+  getNodeConfigPath,
+} from '../../utils/nodeConfigUtils.js';
+import { parseDeploymentTx } from '../../utils/deploymentTx.js';
+import { ChainData } from '../../types/index.js';
 import { NodeConfigPaths } from './types.js';
 import { DEFAULT_CHAIN_NAME } from '../../types/constants.js';
 import SendersEnv, { SenderRole } from '../sendersEnv/index.js';
 import ChainEnv from './index.js';
-import { applyGeneratedNodeConfigDefaults } from '../../utils/nodeConfigUtils.js';
-
-export interface TxHashReconstructionResult {
-  chainConfig: ChainConfig;
-  nodeConfig: NodeConfig;
-  coreContracts: CoreContracts;
-  nodeConfigPaths: NodeConfigPaths;
-}
 
 /**
  * Validate required environment variables for reconstruction.
@@ -56,22 +52,18 @@ function validateEnv(): void {
 /**
  * Reconstruct chain data from deployment transaction hash.
  */
-export async function loadChainFromTxHash(): Promise<TxHashReconstructionResult> {
+export async function loadChainFromTxHash(): Promise<Required<ChainData>> {
   validateEnv();
 
   const txHash = process.env.CHAIN_DEPLOYMENT_TRANSACTION_HASH as `0x${string}`;
   const chainEnv = ChainEnv.getInstance();
-  const parentChainPublicClient = chainEnv.parentChainClient!;
-  const parentChain = parentChainPublicClient?.chain!;
+  const parentChainPublicClient = chainEnv.parentChainClient;
+  if (!parentChainPublicClient?.chain) {
+    throw new Error('Parent chain client is not initialized.');
+  }
+  const parentChain = parentChainPublicClient.chain;
 
-  const tx = createRollupPrepareTransaction(await parentChainPublicClient.getTransaction({ hash: txHash }));
-  const txReceipt = createRollupPrepareTransactionReceipt(
-    await parentChainPublicClient.getTransactionReceipt({ hash: txHash }),
-  );
-
-  const config = tx.getInputs()[0].config;
-  const chainConfig: ChainConfig = JSON.parse(config.chainConfig);
-  const coreContracts: CoreContracts = txReceipt.getCoreContracts();
+  const { chainConfig, coreContracts, rollupConfig } = await parseDeploymentTx(parentChainPublicClient, txHash);
 
   const nodeConfigParameters: PrepareNodeConfigParams = {
     chainName: DEFAULT_CHAIN_NAME,
@@ -79,7 +71,7 @@ export async function loadChainFromTxHash(): Promise<TxHashReconstructionResult>
     coreContracts,
     batchPosterPrivateKey: process.env.BATCH_POSTER_PRIVATE_KEY as `0x${string}`,
     validatorPrivateKey: process.env.VALIDATOR_PRIVATE_KEY as `0x${string}`,
-    stakeToken: config.stakeToken,
+    stakeToken: rollupConfig.stakeToken,
     parentChainId: parentChain.id as 1 | 1337 | 412346 | 42161 | 42170 | 8453 | 11155111 | 421614 | 84532, // Chain-sdk only supports these parent chain ids
     parentChainRpcUrl: parentChain.rpcUrls.default.http[0],
   };
@@ -89,7 +81,7 @@ export async function loadChainFromTxHash(): Promise<TxHashReconstructionResult>
   sendersEnv.addByPrivateKey(process.env.VALIDATOR_PRIVATE_KEY as `0x${string}`, SenderRole.Validator);
 
   // For L2 chains settling to Ethereum mainnet or testnet （should not be needed as we are using Arbitrum Sepolia as parent chain only）
-  if (getParentChainLayer(parentChainPublicClient.chain!.id as any) === 1) {
+  if (getParentChainLayer(parentChain.id as any) === 1) {
     const beaconRpc = process.env.ETHEREUM_BEACON_RPC_URL;
     if (!beaconRpc) {
       throw new Error('Missing ETHEREUM_BEACON_RPC_URL for L2 chains.');
@@ -103,14 +95,14 @@ export async function loadChainFromTxHash(): Promise<TxHashReconstructionResult>
   nodeConfig['ensure-rollup-deployment'] = false;
 
   // Persist main node-config.json
-  const nodeConfigPath = getNodeConfigFilePath();
+  const nodeConfigPath = getNodeConfigPath();
   await writeFile(nodeConfigPath, JSON.stringify(nodeConfig, null, 2));
   logger.success(`Node config written to "${nodeConfigPath}"`);
 
   // Build nodeConfigPaths map (main only for now)
-  const nodeConfigPaths: NodeConfigPaths = createDefaultNodeConfigPaths();
+  const nodeConfigPaths: NodeConfigPaths = createNodeConfigPaths();
 
-  chainEnv.setDeploymentResult(chainConfig, nodeConfig, coreContracts, nodeConfigPaths);
-
+  // Note: callers are responsible for applying this result to ChainEnv
+  // (all call sites invoke chainEnv.setDeploymentResult with it).
   return { chainConfig, nodeConfig, coreContracts, nodeConfigPaths };
 }

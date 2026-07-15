@@ -67,13 +67,6 @@ export class SendersEnv {
   // ===========================================================================
 
   /**
-   * Add an account
-   */
-  add(account: SenderAccount): void {
-    this.accounts.push(account);
-  }
-
-  /**
    * Add an account by private key
    * Creates a viem PrivateKeyAccount from the private key
    * @returns The created SenderAccount
@@ -95,20 +88,6 @@ export class SendersEnv {
   // ===========================================================================
 
   /**
-   * Remove an account by address
-   * Returns true if account was removed, false if not found
-   */
-  removeByAddress(address: string): boolean {
-    const normalizedAddress = address.toLowerCase();
-    const index = this.accounts.findIndex((account) => account.signer.address.toLowerCase() === normalizedAddress);
-    if (index !== -1) {
-      this.accounts.splice(index, 1);
-      return true;
-    }
-    return false;
-  }
-
-  /**
    * Clear all accounts with a specific role
    */
   clearByRole(role: SenderRole): void {
@@ -122,9 +101,6 @@ export class SendersEnv {
     this.accounts = [];
   }
 }
-
-// Export singleton getter for convenience
-export const getSendersEnv = (): SendersEnv => SendersEnv.getInstance();
 
 // Re-export types
 export { SenderRole } from './types.js';

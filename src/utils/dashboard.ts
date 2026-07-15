@@ -5,7 +5,7 @@
 
 import { execSync } from 'child_process';
 import chalk from 'chalk';
-import { config } from '../config/index.js';
+import { getAppConfig, hasDeployerKey } from '../config/index.js';
 import { ChainEnv } from '../state/chainEnv/index.js';
 import { APP_NAME } from '../types/constants.js';
 
@@ -41,8 +41,9 @@ function runPreflightChecks(): CheckResult[] {
     fixInstruction: dockerOk ? undefined : 'Run `docker desktop start` (macOS) or `systemctl start docker` (Linux)',
   });
 
-  const parentChainName = config.app.parentChainDisplayName;
-  const isDefault = config.app.isDefaultParentChain;
+  const app = getAppConfig();
+  const parentChainName = app.parentChainDisplayName;
+  const isDefault = app.isDefaultParentChain;
   checks.push({
     label: 'Parent chain',
     status: isDefault ? 'pass' : 'warn',
@@ -50,7 +51,7 @@ function runPreflightChecks(): CheckResult[] {
     blocker: false,
   });
 
-  const hasParentRpc = !!config.app.parentChainRpc;
+  const hasParentRpc = !!app.parentChainRpc;
   checks.push({
     label: 'PARENT_CHAIN_RPC',
     status: hasParentRpc ? 'pass' : 'warn',
@@ -58,7 +59,7 @@ function runPreflightChecks(): CheckResult[] {
     blocker: false,
   });
 
-  const hasKey = config.hasDeployerKey();
+  const hasKey = hasDeployerKey();
   checks.push({
     label: 'MAIN_PRIVATE_KEY',
     status: hasKey ? 'pass' : 'warn',
@@ -66,7 +67,7 @@ function runPreflightChecks(): CheckResult[] {
     blocker: false,
   });
 
-  const hasTxHash = !!config.app.deploymentTxHash;
+  const hasTxHash = !!app.deploymentTxHash;
   checks.push({
     label: 'Chain deployment',
     status: hasTxHash ? 'pass' : 'info',
@@ -74,7 +75,7 @@ function runPreflightChecks(): CheckResult[] {
     blocker: false,
   });
 
-  const hasChainRpc = !!config.app.chainRpc;
+  const hasChainRpc = !!app.chainRpc;
   checks.push({
     label: 'CHAIN_RPC',
     status: hasChainRpc ? 'pass' : 'info',

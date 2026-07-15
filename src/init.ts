@@ -6,19 +6,15 @@ import logger from './utils/logger.js';
 import { ChainEnv } from './state/chainEnv/index.js';
 import { SendersEnv, SenderRole } from './state/sendersEnv/index.js';
 import { loadChainFromTxHash } from './state/chainEnv/fromTxHash.js';
-import { getNodeConfigFilePath } from './state/chainEnv/persistence.js';
-import { createRollupPrepareTransaction } from '@arbitrum/chain-sdk';
-import { config } from './config/index.js';
+import { getNodeConfigPath } from './utils/nodeConfigUtils.js';
+import { fetchChainIdFromDeploymentTx } from './utils/deploymentTx.js';
+import { getAppConfig, hasDeployerKey, getDeploymentTxHash } from './config/index.js';
 
 export function initializeApp(): void {
   const sendersEnv = SendersEnv.getInstance();
-  const chainEnv = ChainEnv.getInstance();
 
-  chainEnv.setChainModeAvailable(config.isChainModeAvailable());
-  chainEnv.setRemoteRpcModeAvailable(config.isRemoteRpcModeAvailable());
-
-  if (config.hasDeployerKey()) {
-    sendersEnv.addByPrivateKey(config.app.deployerPrivateKey!, SenderRole.RegularSender);
+  if (hasDeployerKey()) {
+    sendersEnv.addByPrivateKey(getAppConfig().deployerPrivateKey!, SenderRole.RegularSender);
   } else {
     logger.warn('MAIN_PRIVATE_KEY is not set. Deploy and demo operations will be unavailable.');
     logger.raw('  How to fix: Add MAIN_PRIVATE_KEY=<your-private-key> to your .env file.');
@@ -36,19 +32,20 @@ export interface InitializeChainModeOptions {
 }
 
 export async function initializeChainMode(opts: InitializeChainModeOptions = {}): Promise<void> {
-  const hasTxHash = !!config.app.deploymentTxHash;
-  const hasNodeConfig = fs.existsSync(getNodeConfigFilePath());
-  const hasParentChainRpc = !!config.app.parentChainRpc;
+  const app = getAppConfig();
+  const hasTxHash = !!app.deploymentTxHash;
+  const hasNodeConfig = fs.existsSync(getNodeConfigPath());
+  const hasParentChainRpc = !!app.parentChainRpc;
 
   const chainEnv = ChainEnv.getInstance();
 
   if (hasParentChainRpc) {
     const parentChainPublicClient = createPublicClient({
       chain: getParentChain(),
-      transport: http(config.app.parentChainRpc),
+      transport: http(app.parentChainRpc),
     });
     chainEnv.setParentChainClient(parentChainPublicClient);
-    logger.info(`Using parent chain RPC: ${config.app.parentChainRpc}`);
+    logger.info(`Using parent chain RPC: ${app.parentChainRpc}`);
   } else if (hasTxHash) {
     logger.warn('PARENT_CHAIN_RPC is not set. Chain mode is disabled.');
   }
@@ -102,7 +99,7 @@ async function discoverExistingContainersOnInit(chainEnv: ChainEnv): Promise<voi
 }
 
 async function fetchChainIdFromTxHash(): Promise<bigint> {
-  const txHash = config.getDeploymentTxHash();
+  const txHash = getDeploymentTxHash();
   if (!txHash) {
     throw new Error('Deployment transaction hash is not configured.');
   }
@@ -113,14 +110,11 @@ async function fetchChainIdFromTxHash(): Promise<bigint> {
     throw new Error('Parent chain client is not initialized.');
   }
 
-  const tx = await parentChainPublicClient.getTransaction({ hash: txHash });
-  const preparedTx = createRollupPrepareTransaction(tx);
-  const chainConfigJson = JSON.parse(preparedTx.getInputs()[0].config.chainConfig);
-  return BigInt(chainConfigJson.chainId);
+  return fetchChainIdFromDeploymentTx(parentChainPublicClient, txHash);
 }
 
 function readChainIdFromNodeConfig(): bigint {
-  const nodeConfigPath = getNodeConfigFilePath();
+  const nodeConfigPath = getNodeConfigPath();
   const content = fs.readFileSync(nodeConfigPath, 'utf-8');
   const nodeConfig = JSON.parse(content);
   const infoRaw = nodeConfig?.chain?.['info-json'];

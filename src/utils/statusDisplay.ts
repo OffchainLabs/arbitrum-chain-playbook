@@ -13,11 +13,31 @@ import Table from 'cli-table3';
 import chalk from 'chalk';
 import { NodeInstance, NodeStatus, NodeType } from '../types/index.js';
 
+// Shared bordered-table character preset (indented two spaces to align with
+// the section headers above each table).
+const TABLE_CHARS = {
+  top: '─',
+  'top-mid': '┬',
+  'top-left': '  ┌',
+  'top-right': '┐',
+  bottom: '─',
+  'bottom-mid': '┴',
+  'bottom-left': '  └',
+  'bottom-right': '┘',
+  left: '  │',
+  'left-mid': '  ├',
+  mid: '─',
+  'mid-mid': '┼',
+  right: '│',
+  'right-mid': '┤',
+  middle: '│',
+} as const;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Color helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function colorForNodeStatus(status: NodeStatus): (s: string) => string {
+function colorForNodeStatus(status: NodeStatus): (s: string) => string {
   switch (status) {
     case NodeStatus.RUNNING:
       return chalk.green;
@@ -30,7 +50,7 @@ export function colorForNodeStatus(status: NodeStatus): (s: string) => string {
   }
 }
 
-export function colorForNodeType(type: NodeType): (s: string) => string {
+function colorForNodeType(type: NodeType): (s: string) => string {
   switch (type) {
     case NodeType.HONEST:
       return chalk.green;
@@ -123,23 +143,7 @@ export function renderNodeTable(rows: NodeRowData[]): void {
       chalk.bold('WS'),
       chalk.bold('Uptime'),
     ],
-    chars: {
-      top: '─',
-      'top-mid': '┬',
-      'top-left': '  ┌',
-      'top-right': '┐',
-      bottom: '─',
-      'bottom-mid': '┴',
-      'bottom-left': '  └',
-      'bottom-right': '┘',
-      left: '  │',
-      'left-mid': '  ├',
-      mid: '─',
-      'mid-mid': '┼',
-      right: '│',
-      'right-mid': '┤',
-      middle: '│',
-    },
+    chars: TABLE_CHARS,
     style: { head: [], border: ['gray'] },
   });
 
@@ -181,23 +185,7 @@ export function renderAccountsTable(accounts: AccountRow[]): void {
 
   const table = new Table({
     head: [chalk.bold('Role'), chalk.bold('Address')],
-    chars: {
-      top: '─',
-      'top-mid': '┬',
-      'top-left': '  ┌',
-      'top-right': '┐',
-      bottom: '─',
-      'bottom-mid': '┴',
-      'bottom-left': '  └',
-      'bottom-right': '┘',
-      left: '  │',
-      'left-mid': '  ├',
-      mid: '─',
-      'mid-mid': '┼',
-      right: '│',
-      'right-mid': '┤',
-      middle: '│',
-    },
+    chars: TABLE_CHARS,
     style: { head: [], border: ['gray'] },
   });
 

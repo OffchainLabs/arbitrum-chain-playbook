@@ -25,12 +25,6 @@ export interface JsonExpressLaneSubmission {
   signature: Hex;
 }
 
-/**
- * Special sentinel sequence number that bypasses the per-round reordering queue.
- * Equivalent to nitro/timeboost/express_lane_service.go: `DontCareSequence = math.MaxUint64`.
- */
-export const DONT_CARE_SEQUENCE = (1n << 64n) - 1n;
-
 // =============================================================================
 // Experiment recording (Phase 6 → consumed by Phase 7 report)
 // =============================================================================

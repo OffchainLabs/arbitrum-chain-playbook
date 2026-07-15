@@ -1,8 +1,8 @@
 import { spawn, spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { dockerCommand } from 'docker-cli-js';
 import { createPublicClient, http } from 'viem';
+import { quietDockerCommand } from '../core/docker/dockerCli.js';
 import { NodeInstance, NodeStatus, NodeType, SingleNodeConfig } from '../types/index.js';
 import logger from '../utils/logger.js';
 import { DEVNODE_CONFIG } from './devnodeConfig.js';
@@ -41,7 +41,9 @@ export class DevnodeManager {
       const ready = await this.waitForReady();
       if (!ready) {
         logger.warn('Devnode start triggered, but readiness check timed out.');
+        return true;
       }
+      logger.success(`Devnode started — RPC ${DEVNODE_CONFIG.rpcUrl} (chain ${DEVNODE_CONFIG.chainId}).`);
       return true;
     } catch (error) {
       logger.errorWithFix(
@@ -54,23 +56,25 @@ export class DevnodeManager {
 
   async stopDevnode(): Promise<boolean> {
     try {
-      await dockerCommand(`stop --timeout=30 ${DEVNODE_CONFIG.containerName}`);
+      await quietDockerCommand(`stop --timeout=30 ${DEVNODE_CONFIG.containerName}`);
     } catch (error) {
       logger.debug(`Devnode stop: ${error instanceof Error ? error.message : String(error)}`);
     }
 
+    // run-dev-node.sh starts the container with --rm, so it usually removes
+    // itself on stop; only rm if a stopped container is actually left behind.
     try {
-      await dockerCommand(`rm ${DEVNODE_CONFIG.containerName}`);
+      const leftover = await quietDockerCommand(
+        `ps -a --filter "name=${DEVNODE_CONFIG.containerName}" --format "{{.ID}}"`,
+      );
+      if (String(leftover.raw ?? '').trim().length > 0) {
+        await quietDockerCommand(`rm ${DEVNODE_CONFIG.containerName}`);
+      }
     } catch (error) {
       logger.debug(`Devnode rm: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     return true;
-  }
-
-  async restartDevnode(): Promise<boolean> {
-    await this.stopDevnode();
-    return this.startDevnode();
   }
 
   async isDevnodeRunning(): Promise<boolean> {
@@ -136,6 +140,16 @@ export class DevnodeManager {
     });
 
     for (let i = 0; i < 60; i++) {
+      // Probe the port with a body-less request first: the global RPC logger
+      // (fileLogger) records every failed JSON-RPC call at ERROR level, so
+      // polling getBlockNumber before the server is listening would spam the
+      // session log with expected connection failures.
+      try {
+        await fetch(DEVNODE_CONFIG.rpcUrl, { method: 'HEAD' });
+      } catch {
+        await sleep(500);
+        continue;
+      }
       try {
         await publicClient.getBlockNumber();
         return true;
@@ -148,14 +162,44 @@ export class DevnodeManager {
 
   private async getRunningContainerId(): Promise<string | null> {
     try {
-      const result = await dockerCommand(
+      const result = await quietDockerCommand(
         `ps --filter "name=${DEVNODE_CONFIG.containerName}" --filter "status=running" --format "{{.ID}}"`,
       );
-      const raw = (result as any)?.raw ?? '';
-      const id = String(raw).trim();
+      const id = String(result.raw ?? '').trim();
       return id.length > 0 ? id : null;
     } catch {
       return null;
+    }
+  }
+
+  async getDevnodeUptime(): Promise<string> {
+    const containerId = await this.getRunningContainerId();
+    if (!containerId) return 'unknown';
+
+    try {
+      // docker-cli-js JSON-parses `inspect` output, which throws when --format
+      // yields plain text — call docker directly for this read-only query.
+      const result = spawnSync('docker', ['inspect', containerId, '--format', '{{.State.StartedAt}}'], {
+        encoding: 'utf-8',
+      });
+      if (result.status !== 0) return 'unknown';
+      const startedAtRaw = result.stdout.trim();
+      if (!startedAtRaw) return 'unknown';
+
+      const startTime = new Date(startedAtRaw);
+      if (isNaN(startTime.getTime())) return 'unknown';
+
+      const uptimeMinutes = Math.floor((Date.now() - startTime.getTime()) / (1000 * 60));
+      const uptimeHours = Math.floor(uptimeMinutes / 60);
+
+      if (uptimeHours > 0) {
+        return `${uptimeHours}h ${uptimeMinutes % 60}m`;
+      } else if (uptimeMinutes > 0) {
+        return `${uptimeMinutes}m`;
+      }
+      return '<1m';
+    } catch {
+      return 'unknown';
     }
   }
 

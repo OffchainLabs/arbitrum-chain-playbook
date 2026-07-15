@@ -1,7 +1,7 @@
 import inquirer from 'inquirer';
 import { formatEther, parseEther, type Address } from 'viem';
 import { existsSync } from 'fs';
-import { copyFile, rm, readdir } from 'fs/promises';
+import { copyFile, readdir } from 'fs/promises';
 import { execSync } from 'child_process';
 import path from 'path';
 import { Playbook, PlaybookActionResult, HeadlessCommandSpec } from '../types.js';
@@ -12,6 +12,7 @@ import { overwriteNodeConfigFile } from '../../core/nodeConfig/nodeConfigOperati
 import { ChainEnv } from '../../state/chainEnv/index.js';
 import { runMaliciousMintDemo } from './maliciousMintRunner.js';
 import { runChallengeDemo } from './challengeRunner.js';
+import { wipeLocalChainData } from '../runnerKit.js';
 import { getRollupStatus } from './monitor.js';
 import {
   DEFAULT_MALICIOUS_MINT_CONFIG,
@@ -30,6 +31,8 @@ import {
 } from '../../types/constants.js';
 import { withCancellation, type OperationContext } from '../../utils/cancellation.js';
 import { breadcrumb } from '../../utils/breadcrumb.js';
+import { MaliciousMintParamsSchema, BoldChallengeParamsSchema } from '../../scripted/schema.js';
+import { positiveNumberValidator } from '../../utils/inquirerUtils.js';
 import chalk from 'chalk';
 
 export const HEADLESS_COMMAND_MALICIOUS_MINT = 'malicious-mint';
@@ -117,14 +120,18 @@ class MaliciousValidatorPlaybook implements Playbook {
     let localDbDirty = false;
     try {
       const entries = await readdir(chainDir);
-      localDbDirty = entries.some((e) => e !== '.DS_Store');
+      // core-contracts.json is persisted chain metadata (written at deploy
+      // time), not leftover node DB state — exempt it exactly as
+      // wipeLocalChainData does, or every restart would delete it.
+      localDbDirty = entries.some((e) => e !== '.DS_Store' && e !== 'core-contracts.json');
     } catch {
       // Directory does not exist — already clean.
     }
 
     if (localDbDirty) {
       logger.info(`Local DB has leftover data. Cleaning ${chainDir}...`);
-      await rm(chainDir, { recursive: true, force: true });
+      // wipeLocalChainData spares core-contracts.json so persistence survives.
+      wipeLocalChainData(chainId);
       logger.success('Local DB cleaned.');
     }
 
@@ -243,30 +250,21 @@ class MaliciousValidatorPlaybook implements Playbook {
           name: 'mainDepositAmount',
           message: 'Main deposit amount (ETH):',
           default: '0.05',
-          validate: (input: string) => {
-            const num = parseFloat(input);
-            return !isNaN(num) && num > 0 ? true : 'Please enter a valid positive number';
-          },
+          validate: positiveNumberValidator(),
         },
         {
           type: 'input',
           name: 'hackerDepositAmount',
           message: 'B deposit amount (ETH):',
           default: '0.001',
-          validate: (input: string) => {
-            const num = parseFloat(input);
-            return !isNaN(num) && num > 0 ? true : 'Please enter a valid positive number';
-          },
+          validate: positiveNumberValidator(),
         },
         {
           type: 'input',
           name: 'hackerFundingAmount',
           message: 'B funding amount for gas (ETH):',
           default: '0.002',
-          validate: (input: string) => {
-            const num = parseFloat(input);
-            return !isNaN(num) && num > 0 ? true : 'Please enter a valid positive number';
-          },
+          validate: positiveNumberValidator(),
         },
       ]);
 
@@ -349,30 +347,21 @@ class MaliciousValidatorPlaybook implements Playbook {
           name: 'maxWaitSeconds',
           message: 'Maximum wait time for challenge (seconds):',
           default: String(DEFAULT_CHALLENGE_DEMO_CONFIG.maxWaitSeconds),
-          validate: (input: string) => {
-            const num = parseInt(input, 10);
-            return !isNaN(num) && num > 0 ? true : 'Please enter a valid positive number';
-          },
+          validate: positiveNumberValidator((s) => parseInt(s, 10)),
         },
         {
           type: 'input',
           name: 'delayedMessageCount',
           message: 'Number of delayed messages (L1 deposits):',
           default: String(DEFAULT_CHALLENGE_DEMO_CONFIG.delayedMessageCount),
-          validate: (input: string) => {
-            const num = parseInt(input, 10);
-            return !isNaN(num) && num > 0 ? true : 'Please enter a valid positive number';
-          },
+          validate: positiveNumberValidator((s) => parseInt(s, 10)),
         },
         {
           type: 'input',
           name: 'childChainTxCount',
           message: 'Number of L2 transactions:',
           default: String(DEFAULT_CHALLENGE_DEMO_CONFIG.childChainTxCount),
-          validate: (input: string) => {
-            const num = parseInt(input, 10);
-            return !isNaN(num) && num > 0 ? true : 'Please enter a valid positive number';
-          },
+          validate: positiveNumberValidator((s) => parseInt(s, 10)),
         },
       ]);
 
@@ -654,12 +643,14 @@ class MaliciousValidatorPlaybook implements Playbook {
         description: 'Run malicious mint demo end-to-end (deploy chain, mint, withdraw, monitor).',
         supportedModes: [OperationMode.CHAIN],
         redeploysChain: true,
+        paramsSchema: MaliciousMintParamsSchema,
       },
       {
         command: HEADLESS_COMMAND_BOLD_CHALLENGE,
         description: 'Run BoLD challenge demo (honest vs malicious validator).',
         supportedModes: [OperationMode.CHAIN],
         redeploysChain: true,
+        paramsSchema: BoldChallengeParamsSchema,
       },
     ];
   }
@@ -673,7 +664,7 @@ class MaliciousValidatorPlaybook implements Playbook {
       case HEADLESS_COMMAND_MALICIOUS_MINT: {
         const config = mergeMaliciousMintParams(params);
         const result = await this.executeMaliciousMint(config, ctx);
-        if (!result || isFailedMaliciousMintResult(result)) {
+        if (!result?.success) {
           return { success: false, message: 'Malicious mint demo failed or was cancelled.' };
         }
         return { success: true, data: result };
@@ -719,19 +710,6 @@ function mergeChallengeDemoParams(params: unknown): ChallengeDemoConfig {
     delayedMessageAmount: p.delayedMessageAmount ?? DEFAULT_CHALLENGE_DEMO_CONFIG.delayedMessageAmount,
     childChainTxCount: p.childChainTxCount ?? DEFAULT_CHALLENGE_DEMO_CONFIG.childChainTxCount,
   };
-}
-
-function isFailedMaliciousMintResult(result: MaliciousMintResult): boolean {
-  return (
-    result.mainAddress === '0x0' &&
-    result.hackerAddress === '0x0' &&
-    result.hackerPrivateKey === '0x0' &&
-    result.mintAmount === 0n &&
-    result.withdrawAmount === 0n &&
-    result.confirmPeriodBlocks === 0n &&
-    result.bridgeBalanceInitial === 0n &&
-    result.bridgeBalanceFinal === 0n
-  );
 }
 
 export const maliciousValidatorPlaybook = new MaliciousValidatorPlaybook();

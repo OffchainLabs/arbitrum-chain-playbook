@@ -14,12 +14,10 @@ import { breadcrumb } from '../utils/breadcrumb.js';
 import { DevnodeManager, DEVNODE_CONFIG, enterDevnodeMode } from '../devnode/index.js';
 import { enterRemoteRpcMode, getRemoteRpcConfig } from '../remoteRpc/index.js';
 import { initializeChainMode } from '../init.js';
+import { isChainModeAvailable, isRemoteRpcModeAvailable } from '../config/index.js';
 import { nodeController } from '../core/docker/nodeController.js';
 import { renderInfoTable, renderNodeTable, renderAccountsTable, buildNodeRow } from '../utils/statusDisplay.js';
 import chalk from 'chalk';
-
-import { setNodeManagerClass } from '../state/chainEnv/index.js';
-setNodeManagerClass(NodeManager);
 
 export class MainMenu {
   private isRunning: boolean = true;
@@ -67,22 +65,22 @@ export class MainMenu {
         message: 'Select mode:',
         choices: [
           {
-            name: this.chainEnv.isChainModeAvailable()
+            name: isChainModeAvailable()
               ? `Start Chain Mode ${chalk.dim('— Deploy and manage Orbit chains on a parent chain')}`
               : 'Start Chain Mode [PARENT_CHAIN_RPC not set]',
             value: OperationMode.CHAIN,
-            disabled: !this.chainEnv.isChainModeAvailable(),
+            disabled: !isChainModeAvailable(),
           },
           {
             name: `Start Devnode Mode ${chalk.dim('— Run a local Nitro devnode for development')}`,
             value: OperationMode.DEVNODE,
           },
           {
-            name: this.chainEnv.isRemoteRpcModeAvailable()
+            name: isRemoteRpcModeAvailable()
               ? `Start Remote RPC Mode ${chalk.dim('— Connect to an existing chain via RPC')}`
               : 'Start Remote RPC Mode [Required env vars not set]',
             value: OperationMode.REMOTE_RPC,
-            disabled: !this.chainEnv.isRemoteRpcModeAvailable(),
+            disabled: !isRemoteRpcModeAvailable(),
           },
           new inquirer.Separator(),
           { name: 'Exit', value: MenuAction.EXIT },
@@ -101,7 +99,7 @@ export class MainMenu {
 
     if (mode === OperationMode.CHAIN) {
       this.chainEnv.setOperationMode(OperationMode.CHAIN);
-      setNodeManagerClass(NodeManager);
+      this.chainEnv.setNodeManager(new NodeManager(this.chainEnv));
       await initializeChainMode();
       return true;
     }
@@ -366,21 +364,13 @@ export class MainMenu {
 
   private async buildNodeRows(nodeManager: import('../types/index.js').NodeManagerLike) {
     const rows: Parameters<typeof renderNodeTable>[0] = [];
-    const nodes = nodeManager.getRunningNodes();
-    // Also include non-running tracked nodes if the manager exposes them
-    const allNodes = (nodeManager as any).getNodes?.() as
-      | Map<string, import('../types/index.js').NodeInstance>
-      | undefined;
-    const entries = allNodes ? Array.from(allNodes.entries()) : nodes.map((n) => [n.config.id, n] as const);
-
-    for (const [id, node] of entries) {
+    // Include non-running tracked nodes as well
+    for (const [id, node] of nodeManager.getNodes().entries()) {
       let uptime: string | undefined;
-      if (nodeManager.getNodeUptime) {
-        try {
-          uptime = await nodeManager.getNodeUptime(id as string);
-        } catch {}
-      }
-      rows.push(buildNodeRow(id as string, node as import('../types/index.js').NodeInstance, uptime));
+      try {
+        uptime = await nodeManager.getNodeUptime(id);
+      } catch {}
+      rows.push(buildNodeRow(id, node, uptime));
     }
     return rows;
   }

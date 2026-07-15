@@ -7,38 +7,16 @@
 import fs from 'fs';
 import path from 'path';
 import { ChainConfig, NodeConfig } from '@arbitrum/chain-sdk';
-import { NodeType } from '../../types/index.js';
-import { CoreContracts, NodeConfigPaths } from './types.js';
-import { discoverNodeConfigs } from '../../utils/nodeConfigUtils.js';
+import { ChainData, NodeType } from '../../types/index.js';
+import { CoreContracts } from './types.js';
+import { LOCAL_DATA_DIR } from '../../types/constants.js';
+import logger from '../../utils/logger.js';
 import {
-  NODE_CONFIG_FILENAME,
-  NODE_CONFIG_MALICIOUS_FILENAME,
-  NODE_CONFIG_HONEST_FILENAME,
-} from '../../types/constants.js';
-
-/**
- * Get the path to the main node config file
- */
-export function getNodeConfigFilePath(): string {
-  return path.join(process.cwd(), NODE_CONFIG_FILENAME);
-}
-
-/**
- * Get the path to node config file for specific node type
- */
-export function getNodeConfigFilePathForType(type: NodeType): string {
-  const basePath = process.cwd();
-  switch (type) {
-    case NodeType.MAIN:
-      return path.join(basePath, NODE_CONFIG_FILENAME);
-    case NodeType.MALICIOUS:
-      return path.join(basePath, NODE_CONFIG_MALICIOUS_FILENAME);
-    case NodeType.HONEST:
-      return path.join(basePath, NODE_CONFIG_HONEST_FILENAME);
-    default:
-      return path.join(basePath, NODE_CONFIG_FILENAME);
-  }
-}
+  discoverNodeConfigs,
+  getNodeConfigPath,
+  getNodeConfigPathForType,
+  createNodeConfigPaths,
+} from '../../utils/nodeConfigUtils.js';
 
 /**
  * Check if node config file exists
@@ -46,32 +24,13 @@ export function getNodeConfigFilePathForType(type: NodeType): string {
  */
 export function nodeConfigFileExists(): boolean {
   // First check the default location
-  if (fs.existsSync(getNodeConfigFilePath())) {
+  if (fs.existsSync(getNodeConfigPath())) {
     return true;
   }
 
   // Use discovery logic to find any available config files
   const discoveredConfigs = discoverNodeConfigs();
   return discoveredConfigs.size > 0;
-}
-
-/**
- * Create default node config paths map
- */
-export function createDefaultNodeConfigPaths(): NodeConfigPaths {
-  const paths = new Map<NodeType, string>();
-  paths.set(NodeType.MAIN, getNodeConfigFilePathForType(NodeType.MAIN));
-  return paths;
-}
-
-/**
- * Data structure for persisted chain data
- */
-interface PersistedData {
-  chainConfig: ChainConfig;
-  nodeConfig: NodeConfig;
-  coreContracts?: CoreContracts;
-  nodeConfigPaths: NodeConfigPaths;
 }
 
 /**
@@ -97,10 +56,48 @@ function extractChainConfigFromNodeConfig(nodeConfig: any): ChainConfig | null {
 }
 
 /**
+ * Path of the persisted core-contracts file for a chain:
+ * <cwd>/<LOCAL_DATA_DIR>/<chainId>/core-contracts.json
+ */
+function coreContractsFilePath(chainId: number | bigint): string {
+  return path.join(process.cwd(), LOCAL_DATA_DIR, chainId.toString(), 'core-contracts.json');
+}
+
+/**
+ * Persist the full core-contracts set for a chain so a restart without
+ * CHAIN_DEPLOYMENT_TRANSACTION_HASH doesn't lose the inbox/rollup addresses
+ * (node-config's chain info only embeds a subset of them).
+ */
+export function saveCoreContracts(chainId: number | bigint, coreContracts: CoreContracts): void {
+  try {
+    const filePath = coreContractsFilePath(chainId);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(coreContracts, null, 2));
+  } catch (error) {
+    // Best-effort: losing this file only means core contracts must be
+    // reconstructed from the deployment tx hash on next start.
+    console.error('Failed to persist core contracts:', error);
+  }
+}
+
+/**
+ * Load persisted core contracts for a chain, if present.
+ */
+export function loadCoreContracts(chainId: number | bigint): CoreContracts | null {
+  try {
+    const filePath = coreContractsFilePath(chainId);
+    if (!fs.existsSync(filePath)) return null;
+    return JSON.parse(fs.readFileSync(filePath, 'utf8')) as CoreContracts;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Load chain data from disk (node-config.json or discovered config files)
  */
-export function loadChainDataFromDisk(): PersistedData | null {
-  let configPath = getNodeConfigFilePath();
+export function loadChainDataFromDisk(): ChainData | null {
+  let configPath = getNodeConfigPath();
 
   // If the default config file doesn't exist, try to discover others
   if (!fs.existsSync(configPath)) {
@@ -109,9 +106,21 @@ export function loadChainDataFromDisk(): PersistedData | null {
       return null;
     }
 
-    // Use the first discovered config file
-    // Prefer 'node-config' if available, otherwise use first found
-    configPath = discoveredConfigs.get('node-config') || discoveredConfigs.values().next().value;
+    // The primary slot must be the canonical node-config.json. Falling back to
+    // a discovered sibling (e.g. a stale node-config-malicious.json left over
+    // from a BoLD demo — nothing ever deletes those) would silently promote
+    // that config to the main chain, so warn loudly when we do.
+    const primary = discoveredConfigs.get('node-config');
+    if (primary) {
+      configPath = primary;
+    } else {
+      const [fallbackName, fallbackPath] = [...discoveredConfigs.entries()][0];
+      logger.warn(
+        `node-config.json not found; falling back to discovered config '${fallbackName}'. ` +
+          `If this is a stale malicious/honest config from a prior demo, delete it or redeploy.`,
+      );
+      configPath = fallbackPath;
+    }
   }
 
   if (!fs.existsSync(configPath)) {
@@ -129,7 +138,7 @@ export function loadChainDataFromDisk(): PersistedData | null {
     }
 
     // Create default node config paths
-    const nodeConfigPaths = createDefaultNodeConfigPaths();
+    const nodeConfigPaths = createNodeConfigPaths();
 
     // Use discovery logic to find all available config files
     const discoveredConfigs = discoverNodeConfigs();
@@ -145,10 +154,14 @@ export function loadChainDataFromDisk(): PersistedData | null {
       }
     }
 
+    // Restore core contracts persisted at deployment time, if available
+    const coreContracts = loadCoreContracts(chainConfig.chainId) ?? undefined;
+
     return {
       chainConfig,
       nodeConfig,
       nodeConfigPaths,
+      coreContracts,
     };
   } catch (error) {
     console.error('Failed to load chain data from disk:', error);
@@ -157,29 +170,10 @@ export function loadChainDataFromDisk(): PersistedData | null {
 }
 
 /**
- * Save chain data to disk
- */
-export function saveChainDataToDisk(data: {
-  chainConfig: ChainConfig;
-  nodeConfig: NodeConfig;
-  coreContracts?: CoreContracts;
-  nodeConfigPaths: NodeConfigPaths;
-}): void {
-  const configPath = getNodeConfigFilePath();
-
-  try {
-    // Save the main node config
-    fs.writeFileSync(configPath, JSON.stringify(data.nodeConfig, null, 2));
-  } catch (error) {
-    throw new Error(`Failed to save chain data: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-/**
  * Save node config for specific type
  */
 export function saveNodeConfigForType(type: NodeType, nodeConfig: NodeConfig): void {
-  const configPath = getNodeConfigFilePathForType(type);
+  const configPath = getNodeConfigPathForType(type);
 
   try {
     fs.writeFileSync(configPath, JSON.stringify(nodeConfig, null, 2));

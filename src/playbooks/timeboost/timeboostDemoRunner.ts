@@ -16,7 +16,7 @@
 
 import { createPublicClient, createWalletClient, defineChain, formatEther, http, parseEther, parseUnits } from 'viem';
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
-import { inboxAbi } from '../malicious-validator/abis.js';
+import { ensureMainNode, waitForChildRpcReady, topUpDeployerOnL2, wipeLocalChainData } from '../runnerKit.js';
 import path from 'node:path';
 import { rmSync, existsSync } from 'node:fs';
 import logger from '../../utils/logger.js';
@@ -26,6 +26,7 @@ import { NodeType } from '../../types/index.js';
 import { DOCKER_IMAGE, NODE_CONFIG_FILENAME } from '../../types/constants.js';
 import { type OperationContext } from '../../utils/cancellation.js';
 import { StepTracker } from '../../utils/ui.js';
+import { sleep, signAndSendRawTx } from './util.js';
 
 import { deployChain } from '../../core/deployChain/deployChain.js';
 import { getParentChain } from '../../utils/parentChain.js';
@@ -494,32 +495,6 @@ export async function runFullTimeboostDemo(
 }
 
 // ---------------------------------------------------------------------------
-// Status / stop helpers (called by the menu)
-// ---------------------------------------------------------------------------
-
-export async function viewTimeboostStatus(): Promise<void> {
-  // For now: a thin status line. Phase 8 polish can pull current round + controller
-  // from the deployed contract once we persist its address. Until then we just
-  // delegate to docker for service status.
-  logger.section('Timeboost services');
-  try {
-    // Lazy-load `dockerCommand` to avoid pulling docker-cli-js on import-time.
-    const { dockerCommand } = await import('docker-cli-js');
-    const r = await dockerCommand('ps --filter name=timeboost- --format "{{.Names}} {{.Status}}"', {
-      echo: false,
-    });
-    logger.raw(((r as { raw?: string })?.raw ?? '<no timeboost services running>').trim());
-  } catch (e) {
-    logger.warn(`docker query failed: ${e instanceof Error ? e.message : String(e)}`);
-  }
-}
-
-export async function stopTimeboostStack(): Promise<void> {
-  await stopTimeboostServices();
-  logger.success('Timeboost services stopped.');
-}
-
-// ---------------------------------------------------------------------------
 // Internals
 // ---------------------------------------------------------------------------
 
@@ -564,12 +539,12 @@ async function generateAndFundDemoAccounts(input: FundInput): Promise<DemoAccoun
   // well under a milli-ETH. 0.002 ETH is already ~10-20x headroom per account.
   const ethEach = parseEther('0.002');
   for (const [name, actor] of Object.entries(accounts) as [keyof DemoAccounts, DemoActor][]) {
-    await signAndSend(input.publicClient, input.deployer, { to: actor.account.address, value: ethEach });
+    await signAndSendRawTx(input.publicClient, input.deployer, { to: actor.account.address, value: ethEach });
     logger.info(`funded ${name} (${actor.account.address}) with ${formatEther(ethEach)} ETH`);
   }
   // Auctioneer hot wallet sends ~1 resolve* tx per round (gas only). 0.005 ETH
   // is plenty for the demo's handful of rounds.
-  await signAndSend(input.publicClient, input.deployer, {
+  await signAndSendRawTx(input.publicClient, input.deployer, {
     to: input.auctioneerToFund,
     value: parseEther('0.005'),
   });
@@ -582,164 +557,14 @@ async function generateAndFundDemoAccounts(input: FundInput): Promise<DemoAccoun
       functionName: 'mint',
       args: [actor.account.address, tokenAmount],
     });
-    await signAndSend(input.publicClient, input.deployer, { to: input.biddingToken, data, gas: 300_000n });
+    await signAndSendRawTx(input.publicClient, input.deployer, { to: input.biddingToken, data, gas: 300_000n });
   }
 
   return accounts;
-}
-
-async function signAndSend(
-  pub: ReturnType<typeof createPublicClient>,
-  signer: ReturnType<typeof privateKeyToAccount>,
-  args: { to: Address; value?: bigint; data?: Hex; gas?: bigint },
-): Promise<void> {
-  const nonce = await pub.getTransactionCount({ address: signer.address, blockTag: 'pending' });
-  const gasPrice = await pub.getGasPrice();
-  const chainId = await pub.getChainId();
-  const signed = (await signer.signTransaction({
-    chainId,
-    type: 'eip1559',
-    to: args.to,
-    value: args.value ?? 0n,
-    data: args.data ?? '0x',
-    gas: args.gas ?? 100_000n,
-    maxFeePerGas: gasPrice * 2n,
-    maxPriorityFeePerGas: gasPrice,
-    nonce,
-  })) as Hex;
-  const txHash = await pub.sendRawTransaction({ serializedTransaction: signed });
-  await pub.waitForTransactionReceipt({ hash: txHash });
-}
-
-async function ensureMainNode(
-  nodeManager: NonNullable<ChainEnv['nodeManager']>,
-): Promise<NonNullable<Awaited<ReturnType<NonNullable<ChainEnv['nodeManager']>['startNode']>>>> {
-  const running = nodeManager.getRunningNodes().find((n) => n.config.nodeType === NodeType.MAIN);
-  if (running) return running;
-  const started = await nodeManager.startNode(NodeType.MAIN);
-  if (!started) throw new Error('Failed to start MAIN sequencer node.');
-  await sleep(8000);
-  return started;
-}
-
-/**
- * Poll a sequencer's HTTP RPC until it responds successfully (or timeout).
- * After `docker run -d`, the container may need 30-90s before HTTP is
- * reliably responsive — it has to process delayed messages, set up the
- * staker, etc. The previous "sleep 8s" was insufficient on real Sepolia.
- */
-async function waitForChildRpcReady(url: string, timeoutMs = 180_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  let lastErr = '';
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }),
-      });
-      if (res.ok) {
-        const body = (await res.json()) as { result?: string; error?: { message: string } };
-        if (body.result) {
-          logger.info(`child RPC ready at ${url} (chainId ${parseInt(body.result, 16)})`);
-          return;
-        }
-        lastErr = body.error?.message ?? 'unknown';
-      } else {
-        lastErr = `HTTP ${res.status}`;
-      }
-    } catch (e) {
-      lastErr = e instanceof Error ? e.message : String(e);
-    }
-    await sleep(500);
-  }
-  throw new Error(`child RPC ${url} not ready after ${timeoutMs}ms (last: ${lastErr})`);
-}
-
-/**
- * Wipe `.arbitrum/<chainId>/` so the sequencer rebuilds from genesis off the
- * inbox. Guards against "wrong msgIdx" errors caused by leftover DB state
- * from prior crashed runs.
- */
-function wipeLocalChainData(chainId: number | bigint): void {
-  const dir = path.join(process.cwd(), '.arbitrum', String(chainId));
-  if (existsSync(dir)) {
-    rmSync(dir, { recursive: true, force: true });
-    logger.info(`wiped local chain data at ${dir}`);
-  }
-}
-
-/**
- * Bridge a small amount of ETH from L1 → L2 deployer if its L2 balance is below
- * the target. Required because deployChain bridges only ~0.001 ETH, too little
- * for the deployer to pay GAS for 4 contract deploys + token mints + funding 5
- * demo accounts + the auctioneer hot wallet.
- *
- * Everything on the child chain is gas-only (no real value moves — bids are
- * off-chain, deposits move ERC20, all demo txs are value=0), and a fresh Orbit
- * chain prices gas in sub-gwei, so the target is intentionally small. 0.02 ETH
- * comfortably covers the whole demo (the prior 0.5 ETH was ~25x over-provisioned
- * and forced a needlessly large, often-unaffordable L1→L2 bridge).
- */
-async function topUpDeployerOnL2(args: {
-  chainEnv: ChainEnv;
-  deployer: ReturnType<typeof privateKeyToAccount>;
-  childPublic: ReturnType<typeof createPublicClient>;
-}): Promise<void> {
-  const TARGET = parseEther('0.02');
-  const balance = await args.childPublic.getBalance({ address: args.deployer.address });
-  logger.info(`L2 deployer balance: ${formatEther(balance)} ETH`);
-  if (balance >= TARGET) {
-    logger.info('Already above target; skipping deposit.');
-    return;
-  }
-
-  const need = TARGET - balance + parseEther('0.003'); // little buffer
-  const coreContracts = args.chainEnv.chainConfig.getCoreContracts();
-  const inbox = coreContracts?.inbox as `0x${string}` | undefined;
-  if (!inbox) throw new Error('inbox address not available from ChainEnv');
-  const parentClient = args.chainEnv.parentChainClient;
-  if (!parentClient) throw new Error('parent chain client not available');
-
-  const parentWallet = createWalletClient({
-    account: args.deployer,
-    chain: parentClient.chain,
-    transport: http(parentClient.transport.url),
-  });
-
-  logger.info(`Bridging ${formatEther(need)} ETH from L1 → L2 (deposit via inbox)...`);
-  const txHash = await (
-    parentWallet as unknown as { writeContract: (a: unknown) => Promise<`0x${string}`> }
-  ).writeContract({
-    address: inbox,
-    abi: inboxAbi,
-    functionName: 'depositEth',
-    value: need,
-    chain: parentClient.chain,
-    account: args.deployer,
-  });
-  await parentClient.waitForTransactionReceipt({ hash: txHash });
-  logger.info(`L1 deposit confirmed: ${txHash}`);
-
-  // Wait for funds to surface on L2 (typically 60-120s on Sepolia).
-  const deadline = Date.now() + 4 * 60_000;
-  while (Date.now() < deadline) {
-    const b = await args.childPublic.getBalance({ address: args.deployer.address });
-    if (b >= TARGET) {
-      logger.success(`L2 deployer balance now ${formatEther(b)} ETH`);
-      return;
-    }
-    await new Promise((r) => setTimeout(r, 4000));
-  }
-  throw new Error('Timed out waiting for L1 → L2 deposit to surface (4 min).');
 }
 
 function firstRegular(sendersEnv: SendersEnv): { privateKey: `0x${string}` } {
   const senders = sendersEnv.getAllByRole(SenderRole.RegularSender);
   if (senders.length === 0) throw new Error('No RegularSender account in SendersEnv.');
   return senders[0];
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }

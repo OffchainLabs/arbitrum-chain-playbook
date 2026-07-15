@@ -2,7 +2,7 @@
  * Type definitions for Arbitrum Chain Playbook
  */
 
-import { ChainConfig, NodeConfig } from '@arbitrum/chain-sdk';
+import { ChainConfig, CoreContracts, NodeConfig } from '@arbitrum/chain-sdk';
 import { PublicClient } from 'viem';
 
 // Node types
@@ -27,12 +27,15 @@ export enum OperationMode {
   REMOTE_RPC = 'remote_rpc',
 }
 
-// Chain environment data (node config + chain config)
-// Note: This is a data transfer object, not the ChainEnv singleton class
-export interface ChainEnvData {
+// Bundle of chain state produced by deployment / tx-hash reconstruction and
+// persisted to / loaded from disk. This is THE chain-data DTO — do not add
+// parallel shapes for the same tuple.
+// Note: This is a data transfer object, not the ChainEnv singleton class.
+export interface ChainData {
+  chainConfig: ChainConfig;
   nodeConfig: NodeConfig;
   nodeConfigPaths: Map<NodeType, string>; // Different NodeType maps to different config file paths
-  chainConfig: ChainConfig;
+  coreContracts?: CoreContracts;
 }
 
 // Node instance (runtime state)
@@ -55,16 +58,11 @@ export interface SingleNodeConfig {
   forwardingTargetPort?: number; // Main node's HTTP port for forwarding transactions (only for non-MAIN nodes)
 }
 
-// Global application state
-export interface AppState {
-  chain: ChainConfig | null;
-  nodes: Map<string, NodeInstance>;
-}
-
 export interface NodeManagerLike {
   // Node querying
   getRunningNodes(): NodeInstance[];
   getNode(nodeId: string): NodeInstance | undefined;
+  getNodes(): Map<string, NodeInstance>;
 
   // Node lifecycle
   startNode(
@@ -77,11 +75,11 @@ export interface NodeManagerLike {
   displayStatus(): void;
 
   // Health monitoring
-  checkNodeHealth?(nodeId: string): Promise<boolean>;
-  getNodeUptime?(nodeId: string): Promise<string>;
-  isMonitoringActive?(): boolean;
-  startHealthMonitoring?(): Promise<void>;
-  stopHealthMonitoring?(): void;
+  checkNodeHealth(nodeId: string): Promise<boolean>;
+  getNodeUptime(nodeId: string): Promise<string>;
+  isMonitoringActive(): boolean;
+  startHealthMonitoring(): Promise<void>;
+  stopHealthMonitoring(): void;
 }
 
 // Menu action types
@@ -99,20 +97,7 @@ export enum MenuAction {
 // Node management action types
 export enum NodeAction {
   START_MAIN = 'start_main',
-  START_HONEST = 'start_honest',
-  START_MALICIOUS = 'start_malicious',
-  START_BOTH = 'start_both',
   STOP_NODE = 'stop_node',
   STOP_ALL = 'stop_all',
-  BACK = 'back',
-}
-
-// Interface call action types
-export enum InterfaceAction {
-  ACT_HONEST = 'act_honest',
-  ACT_MALICIOUS = 'act_malicious',
-  GET_BLOCK_HEIGHT = 'get_block_height',
-  GET_VALIDATOR_SET = 'get_validator_set',
-  SUBMIT_TRANSACTION = 'submit_transaction',
   BACK = 'back',
 }

@@ -17,6 +17,8 @@ export interface MaliciousMintConfig {
  * Result from the malicious mint demo
  */
 export interface MaliciousMintResult {
+  /** False when the demo aborted before completing (early-exit paths). */
+  success: boolean;
   mainAddress: Address;
   hackerAddress: Address;
   hackerPrivateKey: `0x${string}`;

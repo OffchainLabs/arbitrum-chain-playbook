@@ -1,13 +1,6 @@
 /**
- * Phase 5a — Bidder.
- *
- * A bidder:
- *   1. ERC20.approve(auction, amount)
- *   2. auction.deposit(amount) — moves tokens from bidder to auction
- *   3. signs an EIP-712 Bid hash:
- *         Bid(uint64 round, address expressLaneController, uint256 amount)
- *      using the auction's `domainSeparator()` as the EIP-712 separator.
- *   4. POSTs the bid to the bid-validator's `auctioneer_submitBid` endpoint.
+ * Phase 5a — Bidder: approve + deposit bidding tokens, sign the EIP-712 Bid
+ * hash, POST it to the bid-validator's `auctioneer_submitBid` endpoint.
  *
  * Field layout MUST match nitro/timeboost/types.go:48-82 exactly. We hash the
  * struct ourselves (not via viem's `signTypedData`) because viem requires the
@@ -30,12 +23,7 @@ import {
 import { sign as signRawHash, signatureToHex, privateKeyToAccount } from 'viem/accounts';
 import { ierc20Abi, expressLaneAuctionArtifact } from './abis.js';
 import { rawRpcCall, TimeboostRpcError } from './expressLaneRunner.js';
-
-const log = {
-  info: (m: string) => console.log('ℹ', m),
-  warn: (m: string) => console.log('⚠', m),
-  success: (m: string) => console.log('✔', m),
-};
+import { log, signAndSendRawTx } from './util.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -222,24 +210,11 @@ async function sendCall(
   to: Address,
   data: Hex,
 ): Promise<Hash> {
-  const nonce = await publicClient.getTransactionCount({ address: signer.address, blockTag: 'pending' });
-  const gasPrice = await publicClient.getGasPrice();
-  const chainId = await publicClient.getChainId();
-
-  const signed = (await signer.signTransaction({
-    chainId,
-    type: 'eip1559',
-    to,
-    value: 0n,
-    data,
-    gas: 500_000n,
-    maxFeePerGas: gasPrice * 2n,
-    maxPriorityFeePerGas: gasPrice,
-    nonce,
-  })) as Hex;
-
-  const txHash = await publicClient.sendRawTransaction({ serializedTransaction: signed });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-  if (receipt.status !== 'success') throw new Error(`Tx ${txHash} reverted`);
+  const { txHash } = await signAndSendRawTx(
+    publicClient,
+    signer,
+    { to, data, gas: 500_000n },
+    { requireSuccess: true },
+  );
   return txHash;
 }
