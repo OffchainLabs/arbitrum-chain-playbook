@@ -94,7 +94,7 @@ export function initFileLogger(options: FileLoggerOptions = {}): void {
     eventsFilePath = options.structuredEvents ? path.join(LOG_DIR, `events-${timestamp}.jsonl`) : null;
     lastErrorMessage = null;
 
-    const level = getLogLevel();
+    const consoleLevel = getLogLevel();
 
     const textFormat = format.printf((info) => {
       const lvl = (info.level as string).toUpperCase().padEnd(5);
@@ -115,7 +115,11 @@ export function initFileLogger(options: FileLoggerOptions = {}): void {
     });
 
     winstonLogger = createLogger({
-      level,
+      // File sinks always capture debug so failure diagnostics logged via
+      // logger.debug (container-stop failures, monitor errors, devnode
+      // stop/rm) are never dropped. Console verbosity is gated separately by
+      // LOG_LEVEL in logger.ts.
+      level: 'debug',
       format: format.combine(format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' })),
       transports: [
         new transports.File({
@@ -133,7 +137,7 @@ export function initFileLogger(options: FileLoggerOptions = {}): void {
       ],
     });
 
-    winstonLogger.info(`Session started (log level: ${level})`);
+    winstonLogger.info(`Session started (file log: debug, console: ${consoleLevel})`);
     winstonLogger.info(`Log file: ${logFilePath}`);
     winstonLogger.info(`JSONL log: ${jsonlFilePath}`);
     if (transcriptFilePath) {

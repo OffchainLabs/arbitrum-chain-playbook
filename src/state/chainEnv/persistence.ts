@@ -10,6 +10,7 @@ import { ChainConfig, NodeConfig } from '@arbitrum/chain-sdk';
 import { ChainData, NodeType } from '../../types/index.js';
 import { CoreContracts } from './types.js';
 import { LOCAL_DATA_DIR } from '../../types/constants.js';
+import logger from '../../utils/logger.js';
 import {
   discoverNodeConfigs,
   getNodeConfigPath,
@@ -114,8 +115,8 @@ export function loadChainDataFromDisk(): ChainData | null {
       configPath = primary;
     } else {
       const [fallbackName, fallbackPath] = [...discoveredConfigs.entries()][0];
-      console.warn(
-        `[persistence] node-config.json not found; falling back to discovered config '${fallbackName}'. ` +
+      logger.warn(
+        `node-config.json not found; falling back to discovered config '${fallbackName}'. ` +
           `If this is a stale malicious/honest config from a prior demo, delete it or redeploy.`,
       );
       configPath = fallbackPath;

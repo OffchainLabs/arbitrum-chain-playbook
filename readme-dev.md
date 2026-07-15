@@ -11,8 +11,8 @@ This document covers the architecture, key interfaces, and development guideline
   - [SendersEnv Singleton](#sendersenv-singleton)
   - [NodeManager](#nodemanager)
   - [NodeController](#nodecontroller)
-  - [OperationGuard](#operationguard)
-  - [ConfigService](#configservice)
+  - [Guards](#guards)
+  - [Config](#config)
 - [Playbook Interface](#playbook-interface)
 - [Adding a New Playbook](#adding-a-new-playbook)
 - [Development Commands](#development-commands)
@@ -34,7 +34,7 @@ The application follows a layered architecture with clear separation of concerns
 │  ChainEnv (singleton), SendersEnv (singleton)               │
 ├─────────────────────────────────────────────────────────────┤
 │                    Infrastructure Layer                     │
-│  Docker, ConfigService, Guards, Logger                      │
+│  Docker, config functions, guards, Logger                  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -42,8 +42,8 @@ The application follows a layered architecture with clear separation of concerns
 
 1. **UI/Business Separation**: UI logic (inquirer prompts) is in Controllers, business logic is in Managers
 2. **Centralized State**: `ChainEnv` and `SendersEnv` singletons manage all application state
-3. **Guard Pattern**: Common validation checks are centralized in `OperationGuard`
-4. **Configuration Service**: Environment variables and constants are accessed via `ConfigService`
+3. **Guard helpers**: Shared precondition checks live in `utils/guards.ts` (e.g. `requireChainInitiated`)
+4. **Config functions**: Env-derived config is read via plain functions in `config/` (`getAppConfig`, `isChainModeAvailable`, …); static constants come from `types/constants.ts`
 
 ## Project Structure
 
@@ -99,13 +99,13 @@ src/
 │   └── constants.ts            # Application constants
 └── utils/                      # Utilities
     ├── logger.ts               # Logging utilities
-    ├── guards.ts               # OperationGuard class
+    ├── guards.ts               # requireChainInitiated precondition
     ├── nodeConfigUtils.ts      # Node config helpers
     └── inquirerUtils.ts        # Inquirer helpers
 
 tests/                          # Test suites
-└── core/docker/
-    └── nodeManager.spec.ts
+└── unit/                       # Pure unit tests (no docker required)
+    └── *.spec.ts
 ```
 
 ## Key Interfaces
@@ -133,9 +133,8 @@ const chainEnv = ChainEnv.getInstance();
 **Lifecycle Methods**:
 
 ```typescript
-// Load/save chain configuration
+// Load chain configuration from disk
 chainEnv.load(): boolean
-chainEnv.save(): void
 chainEnv.reset(): void
 
 // Set deployment result
@@ -143,11 +142,10 @@ chainEnv.setDeploymentResult(chainConfig, nodeConfig, coreContracts, nodeConfigP
 
 // Set parent chain client
 chainEnv.setParentChainClient(client: PublicClient): void
-
-// Mode availability
-chainEnv.isChainModeAvailable(): boolean
-chainEnv.isRemoteRpcModeAvailable(): boolean
 ```
+
+> Mode-availability checks live in `config/` (`isChainModeAvailable()`,
+> `isRemoteRpcModeAvailable()`), not on `ChainEnv`.
 
 ### SendersEnv Singleton
 
@@ -177,11 +175,10 @@ sendersEnv.getAll(): SenderAccount[]
 sendersEnv.getAllByRole(role: SenderRole): SenderAccount[]
 
 // Add accounts
-sendersEnv.add(account: SenderAccount): void
 sendersEnv.addByPrivateKey(privateKey: string, role: SenderRole): SenderAccount
 
 // Remove accounts
-sendersEnv.removeByAddress(address: string): boolean
+sendersEnv.clearByRole(role: SenderRole): void
 sendersEnv.clear(): void
 ```
 
@@ -258,61 +255,48 @@ await nodeController.selectAndStopNode(): Promise<void>
 await nodeController.showNodeDetails(): Promise<void>
 ```
 
-### OperationGuard
+### Guards
 
-Centralized validation checks to reduce code duplication.
+Shared precondition checks in `utils/guards.ts`.
 
 ```typescript
-import { guard } from './utils/guards';
+import { requireChainInitiated } from './utils/guards';
 
-// Check if chain is initialized (logs error if not)
-if (!guard.requireChainInitiated()) return;
-
-// Check chain mode specifically
-if (!guard.requireChainModeInitiated()) return;
-
-// Get NodeManager (returns null and logs error if not available)
-const nodeManager = guard.requireNodeManager();
-if (!nodeManager) return;
-
-// Get main node (returns null if not found)
-const mainNode = guard.requireMainNode();
-
-// Get main node with PublicClient (returns null if client not available)
-const mainNodeWithClient = guard.requireMainNodeWithClient();
-
-// Combined check: chain initialized + NodeManager available
-const nodeManager = guard.requireChainAndNodeManager();
+// Check if a chain is initialized (logs an actionable error if not)
+if (!requireChainInitiated()) return;
 ```
 
-### ConfigService
+For node-manager / main-node access, read `ChainEnv.getInstance().nodeManager`
+and null-check it directly — the former `OperationGuard` class (with
+`requireNodeManager` / `requireMainNode` / … helpers) was removed as unused.
 
-Centralized configuration management.
+### Config
+
+Env-derived configuration via plain functions in `config/` (re-evaluated on
+each call, so mid-session `.env` changes are picked up). Static tunables
+(docker image, ports, …) are imported directly from `types/constants.ts`, not
+wrapped here.
 
 ```typescript
-import { config } from './config';
+import {
+  getAppConfig,
+  isChainModeAvailable,
+  isRemoteRpcModeAvailable,
+  hasDeployerKey,
+  getDeploymentTxHash,
+} from './config';
 
-// Application config (from environment variables)
-config.app.parentChainRpc      // PARENT_CHAIN_RPC
-config.app.chainRpc            // CHAIN_RPC
-config.app.deploymentTxHash    // CHAIN_DEPLOYMENT_TRANSACTION_HASH
-config.app.deployerPrivateKey  // MAIN_PRIVATE_KEY
+const app = getAppConfig();
+app.parentChainRpc       // PARENT_CHAIN_RPC
+app.chainRpc             // CHAIN_RPC
+app.deploymentTxHash     // CHAIN_DEPLOYMENT_TRANSACTION_HASH
+app.deployerPrivateKey   // MAIN_PRIVATE_KEY
 
-// Docker config (constants)
-config.docker.image            // Docker image name
-config.docker.containerPrefix  // Container name prefix
-config.docker.dataDir          // Container data directory
-config.docker.user             // Docker user
-
-// Network config
-config.network.defaultHttpPort
-config.network.defaultWsPort
-
-// Helper methods
-config.isChainModeAvailable(): boolean
-config.isRemoteRpcModeAvailable(): boolean
-config.hasDeployerKey(): boolean
-config.getDeploymentTxHash(): `0x${string}` | undefined
+// Mode-availability helpers
+isChainModeAvailable(): boolean
+isRemoteRpcModeAvailable(): boolean
+hasDeployerKey(): boolean
+getDeploymentTxHash(): `0x${string}` | undefined
 ```
 
 ## Playbook Interface
@@ -360,7 +344,8 @@ Create `src/playbooks/your-playbook/index.ts`:
 import inquirer from 'inquirer';
 import { Playbook } from '../types';
 import logger from '../../utils/logger';
-import { guard } from '../../utils/guards';
+import { requireChainInitiated } from '../../utils/guards';
+import { ChainEnv } from '../../state/chainEnv';
 
 enum YourPlaybookAction {
   ACTION_ONE = 'action_one',
@@ -407,10 +392,10 @@ class YourPlaybook implements Playbook {
   }
 
   private async handleActionOne(): Promise<void> {
-    // Use guard for validation
-    if (!guard.requireChainInitiated()) return;
+    // Validate preconditions
+    if (!requireChainInitiated()) return;
 
-    const nodeManager = guard.requireNodeManager();
+    const nodeManager = ChainEnv.getInstance().nodeManager;
     if (!nodeManager) return;
 
     // Your implementation here
