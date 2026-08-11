@@ -1,6 +1,6 @@
 # Arbitrum Chain Playbook
 
-An interactive CLI tool for deploying and operating Arbitrum Orbit chains, managing Nitro nodes via Docker, and running scenario playbooks.
+An interactive CLI tool for deploying and operating dedicated Arbitrum chains, managing Nitro nodes via Docker, and running scenario playbooks.
 
 If you want to know the structure of this project and how to add playbooks, please refer to [readme-dev](./readme-dev.md).
 
@@ -21,7 +21,7 @@ If you want to know the structure of this project and how to add playbooks, plea
 
 ## Features
 
-- **Chain Deployment**: Deploy a new Arbitrum Orbit chain with automated configuration
+- **Chain Deployment**: Deploy a new Arbitrum chain with automated configuration
 - **Node Management**: Start, stop, and monitor Nitro nodes via Docker containers
 
 - **State Reconstruction**: Restore chain state from deployment transaction hash
@@ -72,7 +72,7 @@ The CLI supports three operation modes, each suited for different use cases.
 
 ### Chain Mode
 
-Deploy and manage your own Arbitrum Orbit chain.
+Deploy and manage your own dedicated Arbitrum chain.
 
 **Use case**: Full chain deployment and node management on a parent chain (e.g., Arbitrum Sepolia).
 
@@ -140,7 +140,7 @@ MAIN_PRIVATE_KEY=0x...  # Optional, for signing transactions
 
 | Option | Description | Available In |
 |--------|-------------|--------------|
-| **Deploy New Chain** | Deploy an Orbit chain to parent chain | Chain Mode |
+| **Deploy New Chain** | Deploy an dedicated Arbitrum chain to parent chain | Chain Mode |
 | **Manage Nodes** | Start/stop/monitor main Nitro nodes | Chain, Devnode |
 | **Interact with Chain** | Send transactions, query state | All Modes |
 | **View Status** | Display chain and node information | All Modes |
