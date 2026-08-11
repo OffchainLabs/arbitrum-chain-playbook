@@ -126,7 +126,7 @@ Connect to an already-deployed remote chain.
 **Required environment variables**:
 ```bash
 PARENT_CHAIN_RPC=https://sepolia-rollup.arbitrum.io/rpc
-CHAIN_RPC=https://your-orbit-chain-rpc.com
+CHAIN_RPC=https://your-arbitrum-chain-rpc.com
 CHAIN_DEPLOYMENT_TRANSACTION_HASH=0x...
 MAIN_PRIVATE_KEY=0x...  # Optional, for signing transactions
 ```
@@ -223,7 +223,7 @@ The JSONL file is meant for tools / agents — `tail -f logs/cli-*.jsonl | jq` f
 | `PARENT_CHAIN_RPC` | Chain/Remote | RPC endpoint for the parent chain |
 | `MAIN_PRIVATE_KEY` | Recommended | Private key for signing transactions |
 | `CHAIN_DEPLOYMENT_TRANSACTION_HASH` | Remote | Transaction hash of chain deployment |
-| `CHAIN_RPC` | Remote | RPC endpoint for the Orbit chain |
+| `CHAIN_RPC` | Remote | RPC endpoint for the Arbitrum chain |
 
 **Example `.env` file**:
 ```bash
@@ -232,7 +232,7 @@ PARENT_CHAIN_RPC=https://sepolia-rollup.arbitrum.io/rpc
 MAIN_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 
 # For Remote RPC Mode (add these)
-CHAIN_RPC=https://your-orbit-chain.com/rpc
+CHAIN_RPC=https://your-arbitrum-chain.com/rpc
 CHAIN_DEPLOYMENT_TRANSACTION_HASH=0x1234...
 ```
 
