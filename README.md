@@ -1,6 +1,6 @@
 # Arbitrum Chain Playbook
 
-An interactive CLI tool for deploying and operating Arbitrum Orbit chains, managing Nitro nodes via Docker, and running scenario playbooks.
+An interactive CLI tool for deploying and operating dedicated Arbitrum chains, managing Nitro nodes via Docker, and running scenario playbooks.
 
 If you want to know the structure of this project and how to add playbooks, please refer to [readme-dev](./readme-dev.md).
 
@@ -21,7 +21,7 @@ If you want to know the structure of this project and how to add playbooks, plea
 
 ## Features
 
-- **Chain Deployment**: Deploy a new Arbitrum Orbit chain with automated configuration
+- **Chain Deployment**: Deploy a new Arbitrum chain with automated configuration
 - **Node Management**: Start, stop, and monitor Nitro nodes via Docker containers
 
 - **State Reconstruction**: Restore chain state from deployment transaction hash
@@ -72,7 +72,7 @@ The CLI supports three operation modes, each suited for different use cases.
 
 ### Chain Mode
 
-Deploy and manage your own Arbitrum Orbit chain.
+Deploy and manage your own dedicated Arbitrum chain.
 
 **Use case**: Full chain deployment and node management on a parent chain (e.g., Arbitrum Sepolia).
 
@@ -126,7 +126,7 @@ Connect to an already-deployed remote chain.
 **Required environment variables**:
 ```bash
 PARENT_CHAIN_RPC=https://sepolia-rollup.arbitrum.io/rpc
-CHAIN_RPC=https://your-orbit-chain-rpc.com
+CHAIN_RPC=https://your-arbitrum-chain-rpc.com
 CHAIN_DEPLOYMENT_TRANSACTION_HASH=0x...
 MAIN_PRIVATE_KEY=0x...  # Optional, for signing transactions
 ```
@@ -140,7 +140,7 @@ MAIN_PRIVATE_KEY=0x...  # Optional, for signing transactions
 
 | Option | Description | Available In |
 |--------|-------------|--------------|
-| **Deploy New Chain** | Deploy an Orbit chain to parent chain | Chain Mode |
+| **Deploy New Chain** | Deploy an dedicated Arbitrum chain to parent chain | Chain Mode |
 | **Manage Nodes** | Start/stop/monitor main Nitro nodes | Chain, Devnode |
 | **Interact with Chain** | Send transactions, query state | All Modes |
 | **View Status** | Display chain and node information | All Modes |
@@ -223,7 +223,7 @@ The JSONL file is meant for tools / agents — `tail -f logs/cli-*.jsonl | jq` f
 | `PARENT_CHAIN_RPC` | Chain/Remote | RPC endpoint for the parent chain |
 | `MAIN_PRIVATE_KEY` | Recommended | Private key for signing transactions |
 | `CHAIN_DEPLOYMENT_TRANSACTION_HASH` | Remote | Transaction hash of chain deployment |
-| `CHAIN_RPC` | Remote | RPC endpoint for the Orbit chain |
+| `CHAIN_RPC` | Remote | RPC endpoint for the Arbitrum chain |
 
 **Example `.env` file**:
 ```bash
@@ -232,7 +232,7 @@ PARENT_CHAIN_RPC=https://sepolia-rollup.arbitrum.io/rpc
 MAIN_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 
 # For Remote RPC Mode (add these)
-CHAIN_RPC=https://your-orbit-chain.com/rpc
+CHAIN_RPC=https://your-arbitrum-chain.com/rpc
 CHAIN_DEPLOYMENT_TRANSACTION_HASH=0x1234...
 ```
 
